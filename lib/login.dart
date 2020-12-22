@@ -16,11 +16,10 @@ class MyLogin extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: 'Flutter Demo',
+      title: 'EQO',
       theme: ThemeData(
-        // This is the theme of your application.
         primarySwatch: Colors.blue,
+        visualDensity: VisualDensity.adaptivePlatformDensity,
       ),
       home: MyLoginPage(title: 'Flutter Login'),
       routes: {
@@ -43,15 +42,26 @@ class MyLoginPage extends StatefulWidget {
 class _MyLoginState extends State<MyLoginPage> {
   TextStyle style = TextStyle(fontFamily: 'Montserrat', fontSize: 20.0);
 
-  //get MyShow listview
-  Future<List<LoginOutput>> LoginCheck()
+  final emailController = TextEditingController();
+  final passwordController = TextEditingController();
+
+  @override
+  void dispose() {
+    // Clean up the controller when the widget is disposed.
+    emailController.dispose();
+    passwordController.dispose();
+    super.dispose();
+  }
+
+  //login check: take inputs from login field, run by code validation, output login info or error message
+  Future<List<LoginOutput>> LoginCheck(input_email, input_password)
 
   async {
 
     //temporary hard-coded inputs
     Map<String, String> input_data_login = {
-      "email": "jakgoalie@yahoo.com",
-      "password" : "jacob1"
+      "email": input_email,
+      "password" : input_password,
     };
 
     //get data from database
@@ -69,7 +79,15 @@ class _MyLoginState extends State<MyLoginPage> {
     var jsonData = json.decode(data.body);
 
     if(jsonData.contains('Error') == true){
-      //show error msg
+      //need to fix this
+      print("failed!");
+      return showDialog(
+            context: context,
+            builder: (context){
+              return AlertDialog(title: Text("Username or password is incorrect"));
+            }
+        );
+
     }
     else{
       Navigator.pushNamed(
@@ -78,11 +96,6 @@ class _MyLoginState extends State<MyLoginPage> {
         arguments: LoginOutput(jsonData[0].toString(), jsonData[1].toString()));
     }
 
-    List<LoginOutput> LoginResults = [];
-
-    //if error -> fail callout; if user_id/user_Type set -> enter app
-
-    //return LoginResults;
   }
 
   @override
@@ -96,6 +109,7 @@ class _MyLoginState extends State<MyLoginPage> {
 
     final emailField = TextField(
       style: style,
+      controller: emailController,
       decoration: InputDecoration(
           contentPadding: EdgeInsets.fromLTRB(20.0, 15.0, 20.0, 15.0),
           hintText: "Email",
@@ -106,6 +120,7 @@ class _MyLoginState extends State<MyLoginPage> {
     final passwordField = TextField(
       obscureText: true,
       style: style,
+      controller: passwordController,
       decoration: InputDecoration(
           contentPadding: EdgeInsets.fromLTRB(20.0, 15.0, 20.0, 15.0),
           hintText: "Password",
@@ -121,11 +136,7 @@ class _MyLoginState extends State<MyLoginPage> {
         minWidth: MediaQuery.of(context).size.width,
         padding: EdgeInsets.fromLTRB(20.0, 15.0, 20.0, 15.0),
         onPressed: () {
-          LoginCheck();
-          /*Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => MyHomePage()),
-          );*/
+          LoginCheck(emailController.text, passwordController.text);
         },
         child: Text("Login",
             textAlign: TextAlign.center,
@@ -155,6 +166,9 @@ class _MyLoginState extends State<MyLoginPage> {
     );
 
     return Scaffold(
+        appBar: AppBar(
+          title: Text('Flutter EQO'),
+        ),
         body: SingleChildScrollView(
           child: Center(
             child: Container(
@@ -165,10 +179,11 @@ class _MyLoginState extends State<MyLoginPage> {
                   crossAxisAlignment: CrossAxisAlignment.center,
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: <Widget>[
+                    SizedBox(height: 100.0),
                     SizedBox(
                       height: 155.0,
                       child: Image.asset(
-                        "assets/logo.png", //put in EQO logo here
+                        "images/eqo_icon4.png", //put in EQO logo here
                         fit: BoxFit.contain,
                       ),
                     ),
@@ -185,7 +200,7 @@ class _MyLoginState extends State<MyLoginPage> {
                     ),
                     RegisterButon,
                     SizedBox(
-                      height: 15.0,
+                      height: 125.0,
                     ),
                   ],
                 ),

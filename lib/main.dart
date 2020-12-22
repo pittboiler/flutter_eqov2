@@ -2,11 +2,14 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:core';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_eqo_v2/event_handling.dart';
 import 'package:flutter_eqo_v2/login.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:http/http.dart' as http;
 import 'package:async/async.dart';
 import 'package:geocoding/geocoding.dart';
+import 'package:flutter/services.dart';
 
 void main() {
   runApp(MyApp());
@@ -28,6 +31,9 @@ class MyApp extends StatelessWidget {
         visualDensity: VisualDensity.adaptivePlatformDensity,
       ),
       home: MyHomePage(args: args),
+      routes: {
+        EventHandling.routeName: (context) => EventHandling(),
+      },
     );
   }
 }
@@ -44,6 +50,7 @@ class MyHomePage extends StatefulWidget {
 
 }
 
+
 class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMixin{
 
   LoginOutput args;
@@ -52,24 +59,31 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
     this.args = args;
   }
 
-  //login details - use the below for referencing user id/type elsewhere
-  //args.user_id;
-  //args.user_type;
-
   //sets up google maps
   Completer<GoogleMapController> _controller = Completer();
+  Completer<GoogleMapController> _myshowController = Completer();
 
+  //TO DO: coded for now; need to figure out location services
   LatLng _center = LatLng(39.952583, -75.165222);
 
   void _onMapCreated(GoogleMapController controller) {
     _controller.complete(controller);
   }
 
+  void _onMyShowMapCreated(GoogleMapController controller) {
+    _myshowController.complete(controller);
+  }
+
   var map_update_counter = 0;
+  var my_show_map_update_counter = 0;
 
   //initiate map marker sets
   final Set<Marker> localMarkers = Set();
   final Set<Marker> myShowMarkers = Set();
+
+  //floating action button visibility
+
+  var fab_visibility = false;
 
   //get local show listview
   Future<List<LocalShow>> getLocalShows()
@@ -97,6 +111,8 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
 
       var jsonData = json.decode(data.body);
 
+      print("local check" + data.body);
+
       List<LocalShow> localShows = [];
 
       //loop through output
@@ -117,8 +133,6 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
             i["attending_flag"]);
         localShows.add(localShow);
 
-        print(data.body);
-
         //get latitude/longitude, create map marker
         final address_lookup = i["venue_address"] + "," + i["venue_zip_code"];
         List<Location> coordinates = await locationFromAddress(address_lookup);
@@ -137,8 +151,9 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
 
         localMarkers.add(
           Marker(
-            markerId: MarkerId(i["venue"]),
-            position: LatLng(latitude,longitude),
+            markerId: MarkerId(i["show_id"]),
+            position: LatLng(latitude, longitude),
+            infoWindow: InfoWindow(title: i["month"] + " " + i["day"] + " " + i["venue"]),
           )
         );
       }
@@ -176,33 +191,69 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
             body: input_data_my_shows
         );
 
-        var jsonData = json.decode(data.body);
+          print("check" + data.body);
 
-        List<MyShow> myShows = [];
+          var jsonData = json.decode(data.body);
 
-        //loop through output
-        for (var i in jsonData) {
-          MyShow myShow = MyShow(
-              i["show_id"],
-              i["venue"],
-              i["genre"],
-              i["time"],
-              i["month"],
-              i["day"],
-              i["artist_1"],
-              i["artist_2"],
-              i["artist_3"],
-              i["max_attend"],
-              i["venue_address"],
-              i["venue_zip_code"],
-              i["ticket_color"],
-              i["ticket_icon"]);
-          myShows.add(myShow);
-        }
+          List<MyShow> myShows = [];
 
-        print(data.body);
+          //loop through output
+          for (var i in jsonData) {
+            MyShow myShow = MyShow(
+                i["show_id"],
+                i["venue"],
+                i["genre"],
+                i["time"],
+                i["month"],
+                i["month_no"],
+                i["day"],
+                i["artist_1"],
+                i["artist_2"],
+                i["artist_3"],
+                i["max_attend"],
+                i["venue_address"],
+                i["venue_zip_code"],
+                i["ticket_color"],
+                i["ticket_icon"]);
+            myShows.add(myShow);
 
-        return myShows;
+            //get latitude/longitude, create map marker
+            final address_lookup = i["venue_address"] + "," +
+                i["venue_zip_code"];
+            List<Location> coordinates = await locationFromAddress(
+                address_lookup);
+
+            String string_coordinates = coordinates[0].toString();
+            List<String> list_coordinates = string_coordinates.split(",");
+
+            String sLatitudeLine = list_coordinates[0];
+            String sLongitudeLine = list_coordinates[1];
+
+            List<String> sLatitude = sLatitudeLine.split(": ");
+            List<String> sLongitude = sLongitudeLine.split(": ");
+
+            double latitude = double.parse(sLatitude[1]);
+            double longitude = double.parse(sLongitude[1]);
+
+            myShowMarkers.add(
+                Marker(
+                  markerId: MarkerId(i["show_id"]),
+                  position: LatLng(latitude, longitude),
+                  infoWindow: InfoWindow(title: i["month"] + " " + i["day"] + " " + i["venue"]),
+                ),
+            );
+          }
+
+          //update map with markers once or whenever a venue is added
+          if (my_show_map_update_counter < 1) {
+            setState(() {
+              myShowMarkers;
+            });
+            my_show_map_update_counter = my_show_map_update_counter + 1;
+          };
+
+          return myShows;
+
       }
 
       //function for recentering google map based on listtile click
@@ -252,8 +303,34 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
 
       }
 
+  void cancelButton(user_id_input, show_id_input) async {
+
+    print("cancel test");
+
+    Map<String, String> input_data_cancel = {
+      "user_id": user_id_input,
+      "show_id": show_id_input,
+      "remove_button": "1"
+    };
+
+    var url_my_shows = 'https://eqomusic.com/mobile/attendance_management.php';
+
+    var data = await http.post(url_my_shows,
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        body: input_data_cancel
+    );
+
+  }
+
       @override
       Widget build(BuildContext context) {
+
+        if(args.user_type == "venue"){
+          fab_visibility = true;
+        }
 
         return DefaultTabController(length: 2,
             child:
@@ -312,19 +389,27 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
                                     mapRecenter(snapshot.data[int].venue_address, snapshot.data[int].venue_zip_code);
                                   }
                                   ),
-                                  trailing: snapshot.data[int].attending_flag == 1?
-                                        IconButton(icon: Icon(Icons.check_circle_outline, color: Colors.green))
-                                        : IconButton(icon: Icon(Icons.control_point_rounded, color: Colors.orange),
+
+                                    trailing:
+                                        //keeps attendance buttons for fans only
+                                        args.user_type != "fan"?
+                                            null
+                                            :
+                                            snapshot.data[int].attending_flag == 1?
+                                                IconButton(icon: Icon(Icons.check_circle_outline, color: Colors.green))
+                                                : IconButton(icon: Icon(Icons.control_point_rounded, color: Colors.orange),
+
                                         onPressed: (){
-                                          print("will this work");
+                                          my_show_map_update_counter = 0;
                                           String user_id_input = args.user_id;
                                           String show_id_input = snapshot.data[int].show_id;
-                                          Icon(Icons.check_circle_outline, color: Colors.green);
+                                          IconButton(icon: Icon(Icons.check_circle_outline, color: Colors.green));
                                           attendButton(user_id_input, show_id_input);
-                                              setState(() {
-                                                Icon(Icons.check_circle_outline, color: Colors.green);
-                                              });
-                                            }
+                                          setState(() {
+                                            IconButton(icon: Icon(Icons.check_circle_outline, color: Colors.green));
+                                          });
+                                        }
+
                                   )
                                 );
                               },
@@ -343,7 +428,8 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
                               height:250,
                               child:(
                                   GoogleMap(
-                                    onMapCreated: _onMapCreated,
+                                    markers: myShowMarkers,
+                                    onMapCreated: _onMyShowMapCreated,
                                     myLocationEnabled: true,
                                     initialCameraPosition: CameraPosition(
                                       target: _center,
@@ -366,15 +452,45 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
                                   }
 
                                   return ListView.builder(
-                                      itemCount: snapshot.data.length,
-                                      itemBuilder: (context, int){
+                                    itemCount: snapshot.data.length,
+                                    itemBuilder: (context, int){
+                                      return ListTile(
+                                          title: FlatButton(
+                                              child:
+                                              Row(
+                                                  children: [(Text(snapshot.data[int].venue))]
+                                              ),
+                                              onPressed: () {
+                                                mapRecenter(snapshot.data[int].venue_address, snapshot.data[int].venue_zip_code);
+                                              }
+                                          ),
 
-                                        return ListTile(
-                                          title: Text(snapshot.data[int].genre),
-                                        );
+                                          trailing:
+                                          //adds button for declining rsvp (fans) or editing/canceling event (venues)
+                                              IconButton(icon: Icon(Icons.event_busy_outlined, color: Colors.red[900]),
 
-                                      }
+                                              onPressed: (){
+                                                my_show_map_update_counter = 0;
+                                                if(args.user_type == "fan"){
+                                                  cancelButton(args.user_id, snapshot.data[int].show_id);
+                                                  setState(() {});
+                                                  myShowMarkers.remove(myShowMarkers.firstWhere((Marker marker) => marker.markerId.value == snapshot.data[int].show_id));
+                                                }
+                                                else{
 
+                                                  //passes info from row to navigator
+                                                  Navigator.pushNamed(
+                                                      context,
+                                                      EventHandling.routeName,
+                                                      arguments: EventInputs(args.user_id, args.user_type, true, snapshot.data[int].show_id, snapshot.data[int].artist_1, snapshot.data[int].artist_2,
+                                                      snapshot.data[int].artist_3, snapshot.data[int].month_no, snapshot.data[int].day, snapshot.data[int].time, snapshot.data[int].max_attend, snapshot.data[int].genre));
+
+                                                }
+
+                                              },
+
+                                          ));
+                                    },
                                   );
                                 },
                               ))),
@@ -382,9 +498,28 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
                         ]))
                   ]
 
-
               ), // This trailing comma makes auto-formatting nicer for build methods.
-            ));
+
+                floatingActionButton: Visibility(
+                  visible: fab_visibility,
+                  child: FloatingActionButton.extended(
+                    onPressed: () {
+
+                      //passes only empty strings to event handling page
+                      Navigator.pushNamed(
+                        context,
+                        EventHandling.routeName,
+                        arguments: EventInputs(args.user_id, args.user_type, false, "", "", "", "", "", "", "", "", ""));
+
+                    },
+                    icon: Icon(Icons.event),
+                    label: Text("Create"),
+                    backgroundColor: Colors.green,
+                    elevation: 20.0,
+                    ),
+                )
+        ));
+
       }
 
   @override
@@ -419,6 +554,7 @@ class MyShow {
   final String genre;
   final String time;
   final String month;
+  final String month_no;
   final String day;
   final String artist_1;
   final String artist_2;
@@ -430,7 +566,7 @@ class MyShow {
   final String ticket_icon;
 
   MyShow(this.show_id, this.venue, this.genre, this.time,
-      this.month, this.day, this.artist_1, this.artist_2, this.artist_3,
+      this.month, this.month_no, this.day, this.artist_1, this.artist_2, this.artist_3,
       this.max_attend, this.venue_address, this.venue_zip_code, this.ticket_color, this.ticket_icon);
 
 }

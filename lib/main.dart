@@ -123,9 +123,11 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
     }).catchError((e) {
       print(e);
 
-      backupLocation(args.user_city, args.user_state);
-
-      center = LatLng(39.952583, -75.165222);
+      try{
+        backupLocation(args.user_city, args.user_state)
+      } on Exception catch(e) {
+        center = LatLng(39.952583, -75.165222);
+      }
 
     });
   }

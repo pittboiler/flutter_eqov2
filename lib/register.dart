@@ -8,6 +8,7 @@ import 'dart:convert';
 import 'dart:core';
 import 'package:http/http.dart' as http;
 import 'package:async/async.dart';
+import 'package:flutter_masked_text/flutter_masked_text.dart';
 
 void main() => runApp(MyRegister());
 
@@ -44,18 +45,29 @@ class _MyHomePageState extends State<MyRegisterPage> {
   //form handling controllers
   final emailController = TextEditingController();
   final passwordController = TextEditingController();
+  final cityController = TextEditingController();
+  final stateController = TextEditingController();
+
   final fnameController = TextEditingController();
   final lnameController = TextEditingController();
   final vnameController = TextEditingController();
+  final fandobController = MaskedTextController(mask: "00/00/0000");
+
+  final fanlocationController = TextEditingController();
   final addressController = TextEditingController();
+  final artistlocationController = TextEditingController();
   final zipController = TextEditingController();
+
   final vtypeController = TextEditingController();
+  final artistnameController = TextEditingController();
+  final artistgenreController = TextEditingController();
 
   //radio button and field display handling
   int radioValue1 = -1;
   bool typeChosen = false;
   bool fanChosen = false;
   bool venueChosen = false;
+  bool artistChosen = false;
 
   void _handleRadioValueChange1(int value) {
     setState(() {
@@ -64,10 +76,19 @@ class _MyHomePageState extends State<MyRegisterPage> {
       if(radioValue1 == 1){
         fanChosen = true;
         venueChosen = false;
+        artistChosen = false;
       }
       else {
-        venueChosen = true;
-        fanChosen = false;
+        if(radioValue1 == 2){
+          venueChosen = true;
+          fanChosen = false;
+          artistChosen = false;
+        }
+        else{
+          artistChosen = true;
+          venueChosen = false;
+          fanChosen = false;
+        }
       }
     });
   }
@@ -75,7 +96,7 @@ class _MyHomePageState extends State<MyRegisterPage> {
   //core register functions
 
   //fan register: take inputs from login field, run by code validation, output login info or error message
-  Future<List<FanRegister>> RegisterFan(input_email, input_password, input_fname, input_lname)
+  Future<List<UserData>> RegisterFan(input_email, input_password, input_fname, input_lname, input_city, input_state, input_dob)
 
   async {
 
@@ -85,6 +106,9 @@ class _MyHomePageState extends State<MyRegisterPage> {
       "password" : input_password,
       "first_name" : input_fname,
       "last_name" : input_lname,
+      "city" : input_city,
+      "state" : input_state,
+      "date_of_birth" : input_dob,
     };
 
     //get data from database
@@ -116,13 +140,13 @@ class _MyHomePageState extends State<MyRegisterPage> {
       Navigator.pushNamed(
           context,
           MyApp.routeName,
-          arguments: FanRegister(jsonData[0].toString(), jsonData[1].toString()));
+          arguments: UserData(jsonData[0].toString(), jsonData[1].toString(), jsonData[2].toString(), jsonData[3].toString()));
     }
 
   }
 
   //venue register: take inputs from login field, run by code validation, output login info or error message
-  Future<List<VenueRegister>> RegisterVenue(input_email, input_password, input_vname, input_address, input_zip, input_vtype)
+  Future<List<UserData>> RegisterVenue(input_email, input_password, input_vname, input_address, input_city, input_state, input_zip, input_vtype)
 
   async {
 
@@ -134,6 +158,8 @@ class _MyHomePageState extends State<MyRegisterPage> {
       "venue_name" : input_vname,
       "address" : input_address,
       "address_zip_code" : input_zip,
+      "city" : input_city,
+      "state" : input_state,
       "venue_type" : input_vtype,
     };
 
@@ -152,7 +178,7 @@ class _MyHomePageState extends State<MyRegisterPage> {
     var jsonData = json.decode(data.body);
 
     if(jsonData.contains('Error') == true){
-      //need to fix this
+
       print("failed!");
       return showDialog(
           context: context,
@@ -166,7 +192,59 @@ class _MyHomePageState extends State<MyRegisterPage> {
       Navigator.pushNamed(
           context,
           MyApp.routeName,
-          arguments: VenueRegister(jsonData[0].toString(), jsonData[1].toString()));
+          arguments: UserData(jsonData[0].toString(), jsonData[1].toString(), jsonData[2].toString(), jsonData[3].toString()));
+    }
+
+  }
+
+  //artist register: take inputs from login field, run by code validation, output login info or error message
+  Future<List<UserData>> RegisterArtist(input_email, input_password, input_aname, input_genre, input_city, input_state)
+
+  async {
+
+    //temporary hard-coded inputs
+    Map<String, String> input_data_register_venue = {
+      "switch_artist" : "yes",
+      "email": input_email,
+      "password" : input_password,
+      "artist_name" : input_aname,
+      "artist_genre" : input_genre,
+      "city" : input_city,
+      "state" : input_state,
+    };
+
+    //get data from database
+
+    var url_login = 'https://eqomusic.com/mobile/sign_up.php';
+
+    var data = await http.post(url_login,
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        body: input_data_register_venue
+    );
+
+    var jsonData = json.decode(data.body);
+
+    if(jsonData.contains('Error') == true){
+
+      print("failed!");
+      return showDialog(
+          context: context,
+          builder: (context){
+            return AlertDialog(title: Text("Something went wrong, please try again"));
+          }
+      );
+
+    }
+    else{
+      //TO DO: update this with path to artist home page
+      /*
+      Navigator.pushNamed(
+          context,
+          MyApp.routeName,
+          arguments: VenueRegister(jsonData[0].toString(), jsonData[1].toString(), jsonData[2].toString(), jsonData[3].toString()));*/
     }
 
   }
@@ -192,6 +270,30 @@ class _MyHomePageState extends State<MyRegisterPage> {
       decoration: InputDecoration(
           contentPadding: EdgeInsets.fromLTRB(20.0, 15.0, 20.0, 15.0),
           hintText: "Password",
+          border:
+          OutlineInputBorder(borderRadius: BorderRadius.circular(32.0))),
+    );
+
+    //TO DO: look into using dropdowns for city and state
+
+    final cityField = TextField(
+      enabled: typeChosen,
+      style: style,
+      controller: cityController,
+      decoration: InputDecoration(
+          contentPadding: EdgeInsets.fromLTRB(20.0, 15.0, 20.0, 15.0),
+          hintText: "City",
+          border:
+          OutlineInputBorder(borderRadius: BorderRadius.circular(32.0))),
+    );
+
+    final stateField = TextField(
+      enabled: typeChosen,
+      style: style,
+      controller: stateController,
+      decoration: InputDecoration(
+          contentPadding: EdgeInsets.fromLTRB(20.0, 15.0, 20.0, 15.0),
+          hintText: "State",
           border:
           OutlineInputBorder(borderRadius: BorderRadius.circular(32.0))),
     );
@@ -266,8 +368,42 @@ class _MyHomePageState extends State<MyRegisterPage> {
           OutlineInputBorder(borderRadius: BorderRadius.circular(32.0))),
     );
 
+    final fandobField = TextField(
+      enabled: fanChosen,
+      style: style,
+      controller: fandobController,
+      decoration: InputDecoration(
+          contentPadding: EdgeInsets.fromLTRB(20.0, 15.0, 20.0, 15.0),
+          hintText: "Date of Birth (mm/dd/yyyy)",
+          border:
+          OutlineInputBorder(borderRadius: BorderRadius.circular(32.0))),
+    );
 
-    final RegisterButton = Material(
+    //artist-specific fields
+
+    final artistnameField = TextField(
+      enabled: artistChosen,
+      style: style,
+      controller: artistnameController,
+      decoration: InputDecoration(
+          contentPadding: EdgeInsets.fromLTRB(20.0, 15.0, 20.0, 15.0),
+          hintText: "Artist Name",
+          border:
+          OutlineInputBorder(borderRadius: BorderRadius.circular(32.0))),
+    );
+
+    final artistgenreField = TextField(
+      enabled: artistChosen,
+      style: style,
+      controller: artistgenreController,
+      decoration: InputDecoration(
+          contentPadding: EdgeInsets.fromLTRB(20.0, 15.0, 20.0, 15.0),
+          hintText: "Artist Genre",
+          border:
+          OutlineInputBorder(borderRadius: BorderRadius.circular(32.0))),
+    );
+
+    final RegisterButon = Material(
       elevation: 5.0,
       borderRadius: BorderRadius.circular(30.0),
       color: Color(0xff01A0C7),
@@ -276,9 +412,11 @@ class _MyHomePageState extends State<MyRegisterPage> {
         padding: EdgeInsets.fromLTRB(20.0, 15.0, 20.0, 15.0),
         onPressed: () {
           switch(radioValue1){
-            case 1: RegisterFan(emailController.text, passwordController.text, fnameController.text, lnameController.text);
+            case 1: RegisterFan(emailController.text, passwordController.text, fnameController.text, lnameController.text, cityController.text, stateController.text, fandobController.text);
             break;
-            case 2: RegisterVenue(emailController.text, passwordController.text, vnameController.text, addressController.text, zipController.text, vtypeController.text);
+            case 2: RegisterVenue(emailController.text, passwordController.text, vnameController.text, addressController.text, cityController.text, stateController.text, zipController.text, vtypeController.text);
+            break;
+            case 3: RegisterArtist(emailController.text, passwordController.text, artistnameController.text, artistgenreController.text, cityController.text, stateController.text);
             break;
           }
         },
@@ -335,6 +473,20 @@ class _MyHomePageState extends State<MyRegisterPage> {
                               fontSize: 16.0,
                             ),
                           ),
+
+                          //TO DO: UNCOMMENT WHEN READY TO BRING IN ARTISTS
+
+                          /*new Radio(
+                            value: 3,
+                            groupValue: radioValue1,
+                            onChanged: _handleRadioValueChange1,
+                          ),
+                          new Text(
+                            'an artist',
+                            style: new TextStyle(
+                              fontSize: 16.0,
+                            ),
+                          )*/
                         ],
                       ),
                     ),
@@ -376,13 +528,31 @@ class _MyHomePageState extends State<MyRegisterPage> {
                               fnameField,
                               SizedBox(height: 25.0),
                               lnameField,
+                              SizedBox(height: 25.0),
+                              fandobField,
                             ]
                         )
                     ),
+                    Visibility(
+                        visible: fanChosen,
+                        child:
+                        Column(
+                            children: [
+                              SizedBox(height: 25.0),
+                              artistnameField,
+                              SizedBox(height: 25.0),
+                              artistgenreField,
+                            ]
+                        )
+                    ),
+                    SizedBox(height: 25.0),
+                    cityField,
+                    SizedBox(height: 25.0),
+                    stateField,
                     SizedBox(
                       height: 35.0,
                     ),
-                    RegisterButton,
+                    RegisterButon,
                     SizedBox(
                       height: 15.0,
                     ),
@@ -396,26 +566,12 @@ class _MyHomePageState extends State<MyRegisterPage> {
   }
 }
 
-class FanRegister {
-  final String user_id;
-  final String user_type;
-
-  FanRegister(this.user_id, this.user_type);
-
-}
-
-class VenueRegister {
-  final String user_id;
-  final String user_type;
-
-  VenueRegister(this.user_id, this.user_type);
-
-}
-
 class UserData {
   final String user_id;
   final String user_type;
+  final String user_city;
+  final String user_state;
 
-  UserData(this.user_id, this.user_type);
+  UserData(this.user_id, this.user_type, this.user_city, this.user_state);
 
 }

@@ -76,24 +76,37 @@ class _MyLoginState extends State<MyLoginPage> {
         body: input_data_login
     );
 
-    var jsonData = json.decode(data.body);
+    var jsonData;
 
-    if(jsonData.contains('Error') == true){
-      //need to fix this
-      print("failed!");
-      return showDialog(
+    if(data.body.isNotEmpty) {
+      var jsonData = json.decode(data.body);
+
+      if(jsonData.contains('Error') == true){
+        print("failed!");
+        return showDialog(
             context: context,
             builder: (context){
               return AlertDialog(title: Text("Username or password is incorrect"));
             }
         );
 
+      }
+      else{
+        Navigator.pushNamed(
+            context,
+            MyApp.routeName,
+            arguments: LoginOutput(jsonData[0].toString(), jsonData[1].toString(), jsonData[2].toString(), jsonData[3].toString()));
+      }
+
     }
-    else{
-      Navigator.pushNamed(
-        context,
-        MyApp.routeName,
-        arguments: LoginOutput(jsonData[0].toString(), jsonData[1].toString()));
+    else {
+      print("failed!");
+      return showDialog(
+          context: context,
+          builder: (context){
+            return AlertDialog(title: Text("Username or password is incorrect"));
+          }
+      );
     }
 
   }
@@ -215,7 +228,9 @@ class _MyLoginState extends State<MyLoginPage> {
 class LoginOutput {
   final String user_id;
   final String user_type;
+  final String user_city;
+  final String user_state;
 
-  LoginOutput(this.user_id, this.user_type);
+  LoginOutput(this.user_id, this.user_type, this.user_city, this.user_state);
 
 }

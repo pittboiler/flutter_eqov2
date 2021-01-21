@@ -8,6 +8,7 @@ import 'dart:convert';
 import 'dart:core';
 import 'package:http/http.dart' as http;
 import 'package:async/async.dart';
+import 'package:flutter_masked_text/flutter_masked_text.dart';
 
 void main() => runApp(EventHandling());
 
@@ -55,10 +56,13 @@ class _MyEventFormState extends State<EventHandlingPage> {
   TextEditingController openerController = TextEditingController();
   TextEditingController middleController = TextEditingController();
   TextEditingController closerController = TextEditingController();
-  TextEditingController dateController = TextEditingController();
-  TextEditingController timeController = TextEditingController();
+  TextEditingController dateController = MaskedTextController(mask: "00/00/0000");
+  TextEditingController timeController = MaskedTextController(mask: "00:00");
   TextEditingController attendanceController = TextEditingController();
   TextEditingController genreController = TextEditingController();
+
+  bool over_21_checkbox = false;
+  String under_21_flag = "0";
 
   @override
   void dispose() {
@@ -77,13 +81,17 @@ class _MyEventFormState extends State<EventHandlingPage> {
 
   //function for creating event
 
-  Future<List<EventInputs>> CreateEvent(input_month, input_day, input_max_attend, input_genre, input_artist_1, input_artist_2, input_artist_3, input_time, input_user_id)
+  Future<List<EventInputs>> CreateEvent(input_year, input_month, input_day, input_max_attend, input_genre, input_artist_1, input_artist_2, input_artist_3, input_time, input_over_21, input_user_id)
 
   async {
 
-    //temporary hard-coded inputs
+    if(input_over_21 == false){
+      under_21_flag = "1";
+    }
+
     Map<String, String> input_create_event = {
       "create_event" : "yes",
+      "year" : input_year,
       "month": input_month,
       "day" : input_day,
       "max_attend" : input_max_attend,
@@ -92,6 +100,7 @@ class _MyEventFormState extends State<EventHandlingPage> {
       "artist_2" : input_artist_2,
       "artist_3" : input_artist_3,
       "time" : input_time,
+      "under_21" : under_21_flag,
       "user_id" : input_user_id,
     };
 
@@ -110,7 +119,7 @@ class _MyEventFormState extends State<EventHandlingPage> {
     var jsonData = json.decode(data.body);
 
     if(jsonData.contains('Error') == true){
-      //need to fix this
+
       print("failed!");
       return showDialog(
           context: context,
@@ -124,20 +133,21 @@ class _MyEventFormState extends State<EventHandlingPage> {
       Navigator.pushNamed(
           context,
           MyApp.routeName,
-          arguments: UserData(event_args.user_id, event_args.user_type));
+          arguments: UserData(event_args.user_id, event_args.user_type, event_args.user_city, event_args.user_state));
     }
 
   }
 
   //function for updating event
 
-  Future<List<EventInputs>> UpdateEvent(input_month, input_day, input_max_attend, input_genre, input_artist_1, input_artist_2, input_artist_3, input_time, input_user_id)
+  Future<List<EventInputs>> UpdateEvent(input_year, input_month, input_day, input_max_attend, input_genre, input_artist_1, input_artist_2, input_artist_3, input_time, input_under_21, input_user_id)
 
   async {
 
     //temporary hard-coded inputs
     Map<String, String> input_update_event = {
       "edit_event_button" : "yes",
+      "year" : input_year,
       "month": input_month,
       "day" : input_day,
       "max_attend" : input_max_attend,
@@ -146,6 +156,7 @@ class _MyEventFormState extends State<EventHandlingPage> {
       "artist_2" : input_artist_2,
       "artist_3" : input_artist_3,
       "time" : input_time,
+      "under_21" : input_under_21,
       "user_id" : input_user_id,
     };
 
@@ -178,7 +189,7 @@ class _MyEventFormState extends State<EventHandlingPage> {
       Navigator.pushNamed(
           context,
           MyApp.routeName,
-          arguments: UserData(event_args.user_id, event_args.user_type));
+          arguments: UserData(event_args.user_id, event_args.user_type, event_args.user_city, event_args.user_state));
     }
 
   }
@@ -224,7 +235,7 @@ class _MyEventFormState extends State<EventHandlingPage> {
       Navigator.pushNamed(
           context,
           MyApp.routeName,
-          arguments: UserData(event_args.user_id, event_args.user_type));
+          arguments: UserData(event_args.user_id, event_args.user_type, event_args.user_city, event_args.user_state));
     }
 
   }
@@ -232,13 +243,22 @@ class _MyEventFormState extends State<EventHandlingPage> {
   @override
   Widget build(BuildContext context) {
 
+
+
     //updates field values if show is being updated
     if(event_args.update_flag == true) {
       openerController = TextEditingController(text: event_args.open_artist);
       middleController = TextEditingController(text: event_args.follow_artist);
       closerController = TextEditingController(text: event_args.closer_artist);
-      dateController = TextEditingController(text: event_args.month_input + "/" + event_args.day_input);
-      timeController = TextEditingController(text: event_args.time_input.substring(0,5));
+
+      if(event_args.month_input.length == 1) {
+        dateController = MaskedTextController(mask: "00/00/0000", text: "0" + event_args.month_input + event_args.day_input + event_args.year_input.substring((event_args.year_input.length-4).clamp(0, event_args.year_input.length)));
+      }
+      else {
+        dateController = MaskedTextController(mask: "00/00/0000", text: event_args.month_input + event_args.day_input + event_args.year_input.substring((event_args.year_input.length-4).clamp(0, event_args.year_input.length)));
+      }
+
+      timeController = MaskedTextController(mask: "00:00", text: event_args.time_input.substring(0,5));
       attendanceController = TextEditingController(text: event_args.max_attendance);
       genreController = TextEditingController(text: event_args.genre);
     }
@@ -273,13 +293,13 @@ class _MyEventFormState extends State<EventHandlingPage> {
           OutlineInputBorder(borderRadius: BorderRadius.circular(32.0))),
     );
 
-    //TO DO: mask field for mm/dd format
     final dateField = TextField(
       style: style,
       controller: dateController,
+      keyboardType: TextInputType.number,
       decoration: InputDecoration(
           contentPadding: EdgeInsets.fromLTRB(20.0, 15.0, 20.0, 15.0),
-          hintText: "Date (mm/dd)",
+          hintText: "Date (mm/dd/yy)",
           border:
           OutlineInputBorder(borderRadius: BorderRadius.circular(32.0))),
     );
@@ -287,6 +307,7 @@ class _MyEventFormState extends State<EventHandlingPage> {
     final timeField = TextField(
       style: style,
       controller: timeController,
+      keyboardType: TextInputType.number,
       decoration: InputDecoration(
           contentPadding: EdgeInsets.fromLTRB(20.0, 15.0, 20.0, 15.0),
           hintText: "Time (pm only)",
@@ -325,7 +346,7 @@ class _MyEventFormState extends State<EventHandlingPage> {
 
           List<String> date_inputs = dateController.text.split("/");
 
-          CreateEvent(date_inputs[0], date_inputs[1], attendanceController.text, genreController.text, openerController.text, middleController.text, closerController.text, timeController.text, event_args.user_id);
+          CreateEvent(date_inputs[0], date_inputs[1], date_inputs[2], attendanceController.text, genreController.text, openerController.text, middleController.text, closerController.text, timeController.text, over_21_checkbox, event_args.user_id);
 
         },
         child: Text("Create Event",
@@ -346,7 +367,7 @@ class _MyEventFormState extends State<EventHandlingPage> {
 
           List<String> date_inputs = dateController.text.split("/");
 
-          UpdateEvent(date_inputs[0], date_inputs[1], attendanceController.text, genreController.text, openerController.text, middleController.text, closerController.text, timeController.text, event_args.user_id);
+          UpdateEvent(date_inputs[0], date_inputs[1], date_inputs[2], attendanceController.text, genreController.text, openerController.text, middleController.text, closerController.text, timeController.text, over_21_checkbox, event_args.user_id);
 
         },
         child: Text("Update Event",
@@ -401,10 +422,32 @@ class _MyEventFormState extends State<EventHandlingPage> {
                     maxAttendanceField,
                     SizedBox(height: 25.0),
                     genreField,
-                    SizedBox(
-                      height: 35.0,
+                    SizedBox(height: 25.0),
+                    Row(
+                    children: [
+                      Checkbox(
+                        value: over_21_checkbox,
+                          onChanged: (value) {
+                            setState(() {
+                              over_21_checkbox = !over_21_checkbox;
+                            });
+                          },
+                        ),
+                      Text('Is this 21 only?'),
+                      ],
                     ),
-                    CreateButon,
+                    Visibility(
+                        visible: !event_args.update_flag,
+                        child:
+                        Column(
+                            children:[
+                              SizedBox(
+                                height: 35.0,
+                              ),
+                              CreateButon,
+                            ]
+                        )
+                    ),
                     Visibility(
                         visible: event_args.update_flag,
                         child:
@@ -437,17 +480,20 @@ class _MyEventFormState extends State<EventHandlingPage> {
 class EventInputs {
   final String user_id;
   final String user_type;
+  final String user_city;
+  final String user_state;
   final bool update_flag;
   final String show_id;
   final String open_artist;
   final String follow_artist;
   final String closer_artist;
+  final String year_input;
   final String month_input;
   final String day_input;
   final String time_input;
   final String max_attendance;
   final String genre;
 
-  EventInputs(this.user_id, this.user_type, this.update_flag, this.show_id, this.open_artist, this.follow_artist, this.closer_artist, this.month_input, this.day_input, this.time_input, this.max_attendance, this.genre);
+  EventInputs(this.user_id, this.user_type, this.user_city, this.user_state, this.update_flag, this.show_id, this.open_artist, this.follow_artist, this.closer_artist, this.year_input, this.month_input, this.day_input, this.time_input, this.max_attendance, this.genre);
 
 }

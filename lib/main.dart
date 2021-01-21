@@ -1,15 +1,19 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:core';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_eqo_v2/event_handling.dart';
 import 'package:flutter_eqo_v2/login.dart';
+import 'package:flutter_eqo_v2/scan_QR.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:http/http.dart' as http;
 import 'package:async/async.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:flutter/services.dart';
+import 'package:qr_flutter/qr_flutter.dart';
+import 'package:geolocator/geolocator.dart';
 
 void main() {
   runApp(MyApp());
@@ -33,6 +37,7 @@ class MyApp extends StatelessWidget {
       home: MyHomePage(args: args),
       routes: {
         EventHandling.routeName: (context) => EventHandling(),
+        ScanQR.routeName: (context) => ScanQR(),
       },
     );
   }
@@ -60,11 +65,9 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
   }
 
   //sets up google maps
+
   Completer<GoogleMapController> _controller = Completer();
   Completer<GoogleMapController> _myshowController = Completer();
-
-  //TO DO: coded for now; need to figure out location services
-  LatLng _center = LatLng(39.952583, -75.165222);
 
   void _onMapCreated(GoogleMapController controller) {
     _controller.complete(controller);
@@ -77,13 +80,61 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
   var map_update_counter = 0;
   var my_show_map_update_counter = 0;
 
-  //initiate map marker sets
   final Set<Marker> localMarkers = Set();
   final Set<Marker> myShowMarkers = Set();
 
-  //floating action button visibility
+  //gets user location; if automatic doesn't sense, use user city/state, if that doesn't work, use Philadelphia
+
+  Position currentPosition;
+  String currentAddress;
+  LatLng center = LatLng(39.952583, -75.165222);
+
+  final Geolocator geolocator = Geolocator()..forceAndroidLocationManager;
+
+  void backupLocation(city, state) async {
+
+    final location_lookup = city + "," + state;
+    List<Location> coordinates = await locationFromAddress(location_lookup);
+
+    String string_coordinates = coordinates[0].toString();
+    List<String> list_coordinates = string_coordinates.split(",");
+
+    String sLatitudeLine = list_coordinates[0];
+    String sLongitudeLine = list_coordinates[1];
+
+    List<String> sLatitude = sLatitudeLine.split(": ");
+    List<String> sLongitude = sLongitudeLine.split(": ");
+
+    double latitude = double.parse(sLatitude[1]);
+    double longitude = double.parse(sLongitude[1]);
+
+    center = LatLng(latitude, longitude);
+
+  }
+
+  _getCurrentLocation() {
+    geolocator
+        .getCurrentPosition(desiredAccuracy: LocationAccuracy.best)
+        .then((Position position) {
+      setState(() {
+        currentPosition = position;
+        center = LatLng(currentPosition.latitude, currentPosition.longitude);
+      });
+    }).catchError((e) {
+      print(e);
+
+      backupLocation(args.user_city, args.user_state);
+
+      center = LatLng(39.952583, -75.165222);
+
+    });
+  }
+
+  //visibility flags
 
   var fab_visibility = false;
+  var ticket_visibility = false;
+  var scanner_button_visibility = false;
 
   //get local show listview
   Future<List<LocalShow>> getLocalShows()
@@ -92,8 +143,8 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
 
       //temporary hard-coded inputs
       Map<String, String> input_data = {
-        "latitude": "39.952583",
-        "longitude": "-75.165222",
+        "latitude": center.latitude.toString(),
+        "longitude": center.longitude.toString(),
         "user_id": args.user_id
       };
 
@@ -130,6 +181,7 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
             i["max_attend"],
             i["venue_address"],
             i["venue_zip_code"],
+            i["under_21_flag"],
             i["attending_flag"]);
         localShows.add(localShow);
 
@@ -153,7 +205,7 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
           Marker(
             markerId: MarkerId(i["show_id"]),
             position: LatLng(latitude, longitude),
-            infoWindow: InfoWindow(title: i["month"] + " " + i["day"] + " " + i["venue"]),
+            infoWindow: InfoWindow(title: i["venue"]),
           )
         );
       }
@@ -191,7 +243,7 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
             body: input_data_my_shows
         );
 
-          print("check" + data.body);
+          print("my check" + data.body);
 
           var jsonData = json.decode(data.body);
 
@@ -204,6 +256,7 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
                 i["venue"],
                 i["genre"],
                 i["time"],
+                i["year"],
                 i["month"],
                 i["month_no"],
                 i["day"],
@@ -214,7 +267,8 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
                 i["venue_address"],
                 i["venue_zip_code"],
                 i["ticket_color"],
-                i["ticket_icon"]);
+                i["ticket_icon"],
+                i["under_21_flag"]);
             myShows.add(myShow);
 
             //get latitude/longitude, create map marker
@@ -283,8 +337,6 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
       //function for fan pressing attend button
       void attendButton(user_id_input, show_id_input) async {
 
-        print("attend test");
-
         Map<String, String> input_data_attend = {
           "user_id": user_id_input,
           "show_id": show_id_input,
@@ -301,29 +353,40 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
             body: input_data_attend
         );
 
+        if(data.body.contains('Error') == true){
+          print(data.body);
+          return showDialog(
+              context: context,
+              builder: (context){
+                return AlertDialog(title: Text("Could not finalize RSVP; event may be at max capacity"));
+              }
+          );
+
+        }
+
       }
 
-  void cancelButton(user_id_input, show_id_input) async {
+      void cancelButton(user_id_input, show_id_input) async {
 
-    print("cancel test");
+        print("cancel test");
 
-    Map<String, String> input_data_cancel = {
-      "user_id": user_id_input,
-      "show_id": show_id_input,
-      "remove_button": "1"
-    };
+        Map<String, String> input_data_cancel = {
+          "user_id": user_id_input,
+          "show_id": show_id_input,
+          "remove_button": "1"
+        };
 
-    var url_my_shows = 'https://eqomusic.com/mobile/attendance_management.php';
+        var url_my_shows = 'https://eqomusic.com/mobile/attendance_management.php';
 
-    var data = await http.post(url_my_shows,
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/x-www-form-urlencoded'
-        },
-        body: input_data_cancel
-    );
+        var data = await http.post(url_my_shows,
+            headers: {
+              'Accept': 'application/json',
+              'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            body: input_data_cancel
+        );
 
-  }
+      }
 
       @override
       Widget build(BuildContext context) {
@@ -331,6 +394,8 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
         if(args.user_type == "venue"){
           fab_visibility = true;
         }
+
+        _getCurrentLocation();
 
         return DefaultTabController(length: 2,
             child:
@@ -357,7 +422,7 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
                         onMapCreated: _onMapCreated,
                       myLocationEnabled: true,
                       initialCameraPosition: CameraPosition(
-                        target: _center,
+                        target: center,
                         zoom: 11.0,
                       ),
                       )
@@ -381,9 +446,64 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
                               itemBuilder: (context, int){
                                 return ListTile(
                                   title: FlatButton(
-                                  child:
-                                      Row(
-                                        children: [(Text(snapshot.data[int].venue))]
+                                      child:
+                                        Row(
+                                          children: [
+                                            Expanded(
+                                              flex: 2,
+                                              child: GridView.count(
+                                                  crossAxisCount: 1,
+                                                  childAspectRatio: 2.9,
+                                                  padding: const EdgeInsets.all(1.0),
+                                                  mainAxisSpacing: 0,
+                                                  crossAxisSpacing: 10.0,
+                                                  physics: NeverScrollableScrollPhysics(),
+                                                  shrinkWrap: true,
+                                                  children: [
+                                                    Align(alignment: Alignment.center, child: Text(snapshot.data[int].month, textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17))),
+                                                    Align(alignment: Alignment.center, child: Text(snapshot.data[int].day, textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17))),
+                                                    Align(alignment: Alignment.center, child: Text(snapshot.data[int].time.substring(0,5), textAlign: TextAlign.center, style: TextStyle(fontStyle: FontStyle.italic))),
+                                                  ]
+                                              )
+                                            ),
+                                            Expanded(
+                                              flex: 8,
+                                              child: Column(
+                                                  children: [
+                                                    GridView.count(
+                                                            crossAxisCount: 3,
+                                                            childAspectRatio: 2.5,
+                                                            padding: const EdgeInsets.all(1.0),
+                                                            mainAxisSpacing: 0,
+                                                            crossAxisSpacing: 10.0,
+                                                            physics: NeverScrollableScrollPhysics(),
+                                                            shrinkWrap: true,
+                                                            children: [
+                                                              Align(alignment: Alignment.center, child: Text(snapshot.data[int].venue, textAlign: TextAlign.center)),
+                                                              Align(alignment: Alignment.center, child: Text(snapshot.data[int].genre, textAlign: TextAlign.center)),
+
+                                                              snapshot.data[int].under_21_flag == "0"?
+                                                              Align(alignment: Alignment.center, child: Text("18+", textAlign: TextAlign.center))
+                                                                  :
+                                                              Align(alignment: Alignment.center, child: Text("21+", textAlign: TextAlign.center)),
+                                                            ]
+                                                        ),
+                                                    GridView.count(
+                                                          crossAxisCount: 3,
+                                                          childAspectRatio: 2.5,
+                                                          padding: const EdgeInsets.all(1.0),
+                                                          mainAxisSpacing: 0,
+                                                          crossAxisSpacing: 10.0,
+                                                          physics: NeverScrollableScrollPhysics(),
+                                                          shrinkWrap: true,
+                                                          children: [
+                                                            Align(alignment: Alignment.center, child: Text(snapshot.data[int].artist_1, textAlign: TextAlign.center)),
+                                                            Align(alignment: Alignment.center, child: Text(snapshot.data[int].artist_2, textAlign: TextAlign.center)),
+                                                            Align(alignment: Alignment.center, child: Text(snapshot.data[int].artist_3, textAlign: TextAlign.center)),
+                                                          ]
+                                                      )
+                                              ]))
+                                          ]
                                       ),
                                   onPressed: () {
                                     mapRecenter(snapshot.data[int].venue_address, snapshot.data[int].venue_zip_code);
@@ -396,21 +516,19 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
                                             null
                                             :
                                             snapshot.data[int].attending_flag == 1?
-                                                IconButton(icon: Icon(Icons.check_circle_outline, color: Colors.green))
-                                                : IconButton(icon: Icon(Icons.control_point_rounded, color: Colors.orange),
+                                                Icon(Icons.check_circle_outline, color: Colors.green)
+                                                : GestureDetector(child: Icon(Icons.control_point_rounded, color: Colors.orange),
 
-                                        onPressed: (){
-                                          my_show_map_update_counter = 0;
-                                          String user_id_input = args.user_id;
-                                          String show_id_input = snapshot.data[int].show_id;
-                                          IconButton(icon: Icon(Icons.check_circle_outline, color: Colors.green));
-                                          attendButton(user_id_input, show_id_input);
-                                          setState(() {
-                                            IconButton(icon: Icon(Icons.check_circle_outline, color: Colors.green));
-                                          });
-                                        }
-
-                                  )
+                                            onTap: (){
+                                              my_show_map_update_counter = 0;
+                                              String user_id_input = args.user_id;
+                                              String show_id_input = snapshot.data[int].show_id;
+                                              attendButton(user_id_input, show_id_input);
+                                              setState(() {
+                                                Icon(Icons.check_circle_outline, color: Colors.green);
+                                              });
+                                            }
+                                            )
                                 );
                               },
                             );
@@ -432,7 +550,7 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
                                     onMapCreated: _onMyShowMapCreated,
                                     myLocationEnabled: true,
                                     initialCameraPosition: CameraPosition(
-                                      target: _center,
+                                      target: center,
                                       zoom: 11.0,
                                     ),
                                   )
@@ -455,10 +573,66 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
                                     itemCount: snapshot.data.length,
                                     itemBuilder: (context, int){
                                       return ListTile(
+
                                           title: FlatButton(
                                               child:
                                               Row(
-                                                  children: [(Text(snapshot.data[int].venue))]
+                                                  children: [
+                                                    Expanded(
+                                                        flex: 2,
+                                                        child: GridView.count(
+                                                            crossAxisCount: 1,
+                                                            childAspectRatio: 2.9,
+                                                            padding: const EdgeInsets.all(1.0),
+                                                            mainAxisSpacing: 0,
+                                                            crossAxisSpacing: 10.0,
+                                                            physics: NeverScrollableScrollPhysics(),
+                                                            shrinkWrap: true,
+                                                            children: [
+                                                              Align(alignment: Alignment.center, child: Text(snapshot.data[int].month, textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17))),
+                                                              Align(alignment: Alignment.center, child: Text(snapshot.data[int].day, textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17))),
+                                                              Align(alignment: Alignment.center, child: Text(snapshot.data[int].time.substring(0,5), textAlign: TextAlign.center, style: TextStyle(fontStyle: FontStyle.italic))),
+                                                            ]
+                                                        )
+                                                    ),
+                                                    Expanded(
+                                                        flex: 8,
+                                                        child: Column(
+                                                            children: [
+                                                              GridView.count(
+                                                                  crossAxisCount: 3,
+                                                                  childAspectRatio: 2.5,
+                                                                  padding: const EdgeInsets.all(1.0),
+                                                                  mainAxisSpacing: 0,
+                                                                  crossAxisSpacing: 10.0,
+                                                                  physics: NeverScrollableScrollPhysics(),
+                                                                  shrinkWrap: true,
+                                                                  children: [
+                                                                    Align(alignment: Alignment.center, child: Text(snapshot.data[int].venue, textAlign: TextAlign.center)),
+                                                                    Align(alignment: Alignment.center, child: Text(snapshot.data[int].genre, textAlign: TextAlign.center)),
+
+                                                                    snapshot.data[int].under_21_flag == "0"?
+                                                                    Align(alignment: Alignment.center, child: Text("18+", textAlign: TextAlign.center))
+                                                                        :
+                                                                    Align(alignment: Alignment.center, child: Text("21+", textAlign: TextAlign.center)),
+                                                                  ]
+                                                              ),
+                                                              GridView.count(
+                                                                  crossAxisCount: 3,
+                                                                  childAspectRatio: 2.5,
+                                                                  padding: const EdgeInsets.all(1.0),
+                                                                  mainAxisSpacing: 0,
+                                                                  crossAxisSpacing: 10.0,
+                                                                  physics: NeverScrollableScrollPhysics(),
+                                                                  shrinkWrap: true,
+                                                                  children: [
+                                                                    Align(alignment: Alignment.center, child: Text(snapshot.data[int].artist_1, textAlign: TextAlign.center)),
+                                                                    Align(alignment: Alignment.center, child: Text(snapshot.data[int].artist_2, textAlign: TextAlign.center)),
+                                                                    Align(alignment: Alignment.center, child: Text(snapshot.data[int].artist_3, textAlign: TextAlign.center)),
+                                                                  ]
+                                                              )
+                                                            ]))
+                                                  ]
                                               ),
                                               onPressed: () {
                                                 mapRecenter(snapshot.data[int].venue_address, snapshot.data[int].venue_zip_code);
@@ -467,29 +641,92 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
 
                                           trailing:
                                           //adds button for declining rsvp (fans) or editing/canceling event (venues)
-                                              IconButton(icon: Icon(Icons.event_busy_outlined, color: Colors.red[900]),
+                                              GestureDetector(
+                                                child: Icon(Icons.event_busy_outlined, color: Colors.red[900]),
 
-                                              onPressed: (){
-                                                my_show_map_update_counter = 0;
-                                                if(args.user_type == "fan"){
-                                                  cancelButton(args.user_id, snapshot.data[int].show_id);
-                                                  setState(() {});
-                                                  myShowMarkers.remove(myShowMarkers.firstWhere((Marker marker) => marker.markerId.value == snapshot.data[int].show_id));
-                                                }
-                                                else{
+                                                onTap: (){
 
-                                                  //passes info from row to navigator
-                                                  Navigator.pushNamed(
-                                                      context,
-                                                      EventHandling.routeName,
-                                                      arguments: EventInputs(args.user_id, args.user_type, true, snapshot.data[int].show_id, snapshot.data[int].artist_1, snapshot.data[int].artist_2,
-                                                      snapshot.data[int].artist_3, snapshot.data[int].month_no, snapshot.data[int].day, snapshot.data[int].time, snapshot.data[int].max_attend, snapshot.data[int].genre));
+                                                  my_show_map_update_counter = 0;
 
-                                                }
+                                                  if(args.user_type == "fan"){
+                                                    cancelButton(args.user_id, snapshot.data[int].show_id);
 
-                                              },
+                                                    setState(() {
+                                                      myShowMarkers.removeWhere((Marker marker) => marker.markerId.value == snapshot.data[int].show_id);
+                                                    });
 
-                                          ));
+                                                  }
+
+                                                  else{
+                                                    //passes info from row to navigator
+                                                    Navigator.pushNamed(
+                                                        context,
+                                                        EventHandling.routeName,
+                                                        arguments: EventInputs(args.user_id, args.user_type, args.user_city, args.user_city, true, snapshot.data[int].show_id, snapshot.data[int].artist_1, snapshot.data[int].artist_2,
+                                                        snapshot.data[int].artist_3, snapshot.data[int].year, snapshot.data[int].month_no, snapshot.data[int].day, snapshot.data[int].time, snapshot.data[int].max_attend, snapshot.data[int].genre));
+                                                  }
+
+                                                  //updates ticket/scanner button visibility variable based on time to expand QR code
+
+                                                  var now = new DateTime.now();
+
+                                                  if((args.user_type == "venue") & (now.month == snapshot.data[int].month_no) & (now.day == snapshot.data[int].day) & ((now.hour-13) >= snapshot.data[int].time)){
+
+                                                    switch(scanner_button_visibility){
+                                                      case false: {scanner_button_visibility = true;}
+                                                      break;
+                                                      case true: {scanner_button_visibility = false;}
+                                                      break;
+                                                    }
+
+                                                  }
+
+                                                  if((args.user_type == "fan") & (now.month == snapshot.data[int].month_no) & (now.day == snapshot.data[int].day) & ((now.hour-13) >= snapshot.data[int].time)){
+
+                                                        switch(ticket_visibility){
+                                                          case false: {ticket_visibility = true;}
+                                                          break;
+                                                          case true: {ticket_visibility = false;}
+                                                          break;
+                                                        }
+
+                                                  }
+
+                                                },
+
+                                          ),
+
+                                      //QR code area. TO DO: add a scanner here for venues instead
+                                      subtitle: args.user_type == "fan" ?
+
+                                      Visibility(
+                                          visible: ticket_visibility,
+                                          child: QrImage(
+                                            data: args.user_id + "#" + snapshot.data[int].show_id + "#" + snapshot.data[int].ticket_color,
+                                            version: QrVersions.auto,
+                                            size: 200.0,
+                                          ),
+                                      )
+
+                                      :
+
+                                      Visibility(
+                                        visible: scanner_button_visibility,
+                                        child: FlatButton(
+                                          padding: EdgeInsets.all(15),
+                                          onPressed: (){
+                                            Navigator.of(context).push(MaterialPageRoute(builder: (context)=> ScanQR()));
+                                          },
+                                          //TO DO: update colors
+                                          child: Text("Scan QR Code",style: TextStyle(color: Colors.indigo[900]),),
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(20),
+                                            side: BorderSide(color: Colors.indigo[900]),
+                                          ),
+                                        ),
+                                      )
+
+                                      );
                                     },
                                   );
                                 },
@@ -509,7 +746,7 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
                       Navigator.pushNamed(
                         context,
                         EventHandling.routeName,
-                        arguments: EventInputs(args.user_id, args.user_type, false, "", "", "", "", "", "", "", "", ""));
+                        arguments: EventInputs(args.user_id, args.user_type, args.user_city, args.user_state, false, "", "", "", "", "", "", "", "", "", ""));
 
                     },
                     icon: Icon(Icons.event),
@@ -540,11 +777,12 @@ class LocalShow {
   final String max_attend;
   final String venue_address;
   final String venue_zip_code;
+  final String under_21_flag; //for whatever reason, having this as int throws error; check later, handling as string for now
   final int attending_flag;
 
   LocalShow(this.show_id, this.venue, this.genre, this.time,
       this.month, this.day, this.artist_1, this.artist_2, this.artist_3,
-      this.max_attend, this.venue_address, this.venue_zip_code, this.attending_flag);
+      this.max_attend, this.venue_address, this.venue_zip_code, this.under_21_flag, this.attending_flag);
 
 }
 
@@ -553,6 +791,7 @@ class MyShow {
   final String venue;
   final String genre;
   final String time;
+  final String year;
   final String month;
   final String month_no;
   final String day;
@@ -564,9 +803,10 @@ class MyShow {
   final String venue_zip_code;
   final String ticket_color;
   final String ticket_icon;
+  final String under_21_flag; //for whatever reason, having this as int throws error; check later, handling as string for now
 
-  MyShow(this.show_id, this.venue, this.genre, this.time,
+  MyShow(this.show_id, this.venue, this.genre, this.time, this.year,
       this.month, this.month_no, this.day, this.artist_1, this.artist_2, this.artist_3,
-      this.max_attend, this.venue_address, this.venue_zip_code, this.ticket_color, this.ticket_icon);
+      this.max_attend, this.venue_address, this.venue_zip_code, this.ticket_color, this.ticket_icon, this.under_21_flag);
 
 }

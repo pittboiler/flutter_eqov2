@@ -1,8 +1,10 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_eqo_v2/login.dart';
 import 'package:flutter_eqo_v2/main.dart';
 import 'package:flutter_eqo_v2/register.dart';
+import 'package:flutter_eqo_v2/artist_main.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:core';
@@ -39,8 +41,6 @@ class MyRegisterPage extends StatefulWidget {
 
 class _MyHomePageState extends State<MyRegisterPage> {
   TextStyle style = TextStyle(fontFamily: 'Montserrat', fontSize: 20.0);
-
-  //if adding artists, will need to add fields, controllers, radio buttons, and a separate function
 
   //form handling controllers
   final emailController = TextEditingController();
@@ -96,7 +96,7 @@ class _MyHomePageState extends State<MyRegisterPage> {
   //core register functions
 
   //fan register: take inputs from login field, run by code validation, output login info or error message
-  Future<List<UserData>> RegisterFan(input_email, input_password, input_fname, input_lname, input_city, input_state, input_dob)
+  Future<List<LoginOutput>> RegisterFan(input_email, input_password, input_fname, input_lname, input_city, input_state, input_dob)
 
   async {
 
@@ -140,13 +140,13 @@ class _MyHomePageState extends State<MyRegisterPage> {
       Navigator.pushNamed(
           context,
           MyApp.routeName,
-          arguments: UserData(jsonData[0].toString(), jsonData[1].toString(), jsonData[2].toString(), jsonData[3].toString()));
+          arguments: LoginOutput(jsonData[0].toString(), jsonData[1].toString(), jsonData[2].toString(), jsonData[3].toString()));
     }
 
   }
 
   //venue register: take inputs from login field, run by code validation, output login info or error message
-  Future<List<UserData>> RegisterVenue(input_email, input_password, input_vname, input_address, input_city, input_state, input_zip, input_vtype)
+  Future<List<LoginOutput>> RegisterVenue(input_email, input_password, input_vname, input_address, input_city, input_state, input_zip, input_vtype)
 
   async {
 
@@ -192,13 +192,13 @@ class _MyHomePageState extends State<MyRegisterPage> {
       Navigator.pushNamed(
           context,
           MyApp.routeName,
-          arguments: UserData(jsonData[0].toString(), jsonData[1].toString(), jsonData[2].toString(), jsonData[3].toString()));
+          arguments: LoginOutput(jsonData[0].toString(), jsonData[1].toString(), jsonData[2].toString(), jsonData[3].toString()));
     }
 
   }
 
   //artist register: take inputs from login field, run by code validation, output login info or error message
-  Future<List<UserData>> RegisterArtist(input_email, input_password, input_aname, input_genre, input_city, input_state)
+  Future<List<LoginOutput>> RegisterArtist(input_email, input_password, input_aname, input_genre, input_city, input_state)
 
   async {
 
@@ -239,12 +239,10 @@ class _MyHomePageState extends State<MyRegisterPage> {
 
     }
     else{
-      //TO DO: update this with path to artist home page
-      /*
-      Navigator.pushNamed(
-          context,
-          MyApp.routeName,
-          arguments: VenueRegister(jsonData[0].toString(), jsonData[1].toString(), jsonData[2].toString(), jsonData[3].toString()));*/
+          Navigator.pushNamed(
+              context,
+              ArtistMain.routeName,
+              arguments: LoginOutput(jsonData[0].toString(), jsonData[1].toString(), jsonData[2].toString(), jsonData[3].toString()));
     }
 
   }
@@ -264,6 +262,7 @@ class _MyHomePageState extends State<MyRegisterPage> {
     );
 
     final passwordField = TextField(
+      obscureText: true,
       enabled: typeChosen,
       style: style,
       controller: passwordController,
@@ -473,10 +472,7 @@ class _MyHomePageState extends State<MyRegisterPage> {
                               fontSize: 16.0,
                             ),
                           ),
-
-                          //TO DO: UNCOMMENT WHEN READY TO BRING IN ARTISTS
-
-                          /*new Radio(
+                          new Radio(
                             value: 3,
                             groupValue: radioValue1,
                             onChanged: _handleRadioValueChange1,
@@ -486,7 +482,7 @@ class _MyHomePageState extends State<MyRegisterPage> {
                             style: new TextStyle(
                               fontSize: 16.0,
                             ),
-                          )*/
+                          )
                         ],
                       ),
                     ),
@@ -534,7 +530,7 @@ class _MyHomePageState extends State<MyRegisterPage> {
                         )
                     ),
                     Visibility(
-                        visible: fanChosen,
+                        visible: artistChosen,
                         child:
                         Column(
                             children: [
@@ -545,17 +541,23 @@ class _MyHomePageState extends State<MyRegisterPage> {
                             ]
                         )
                     ),
-                    SizedBox(height: 25.0),
-                    cityField,
-                    SizedBox(height: 25.0),
-                    stateField,
-                    SizedBox(
-                      height: 35.0,
-                    ),
-                    RegisterButon,
-                    SizedBox(
-                      height: 15.0,
-                    ),
+                    Visibility(
+                        visible: typeChosen,
+                        child:
+                            Column(
+                              children: [
+                                  SizedBox(height: 25.0),
+                                  cityField,
+                                  SizedBox(height: 25.0),
+                                  stateField,
+                                  SizedBox(
+                                    height: 35.0,
+                                  ),
+                                  RegisterButon,
+                                  SizedBox(
+                                    height: 15.0,
+                                  ),
+                                ])),
                   ],
                 ),
               ),
@@ -564,14 +566,4 @@ class _MyHomePageState extends State<MyRegisterPage> {
         )
     );
   }
-}
-
-class UserData {
-  final String user_id;
-  final String user_type;
-  final String user_city;
-  final String user_state;
-
-  UserData(this.user_id, this.user_type, this.user_city, this.user_state);
-
 }

@@ -9,6 +9,8 @@ import 'dart:core';
 import 'package:http/http.dart' as http;
 import 'package:async/async.dart';
 
+import 'artist_main.dart';
+
 void main() => runApp(MyLogin());
 
 class MyLogin extends StatelessWidget {
@@ -25,6 +27,7 @@ class MyLogin extends StatelessWidget {
       routes: {
         MyApp.routeName: (context) => MyApp(),
         MyRegister.routeName: (context) => MyRegister(),
+        ArtistMain.routeName: (context) => ArtistMain(),
       },
     );
   }
@@ -76,10 +79,9 @@ class _MyLoginState extends State<MyLoginPage> {
         body: input_data_login
     );
 
-    var jsonData;
+    var jsonData = json.decode(data.body);
 
     if(data.body.isNotEmpty) {
-      var jsonData = json.decode(data.body);
 
       if(jsonData.contains('Error') == true){
         print("failed!");
@@ -92,10 +94,18 @@ class _MyLoginState extends State<MyLoginPage> {
 
       }
       else{
-        Navigator.pushNamed(
-            context,
-            MyApp.routeName,
-            arguments: LoginOutput(jsonData[0].toString(), jsonData[1].toString(), jsonData[2].toString(), jsonData[3].toString()));
+        if(jsonData[1].toString() == "artist"){
+          Navigator.pushNamed(
+              context,
+              ArtistMain.routeName,
+              arguments: LoginOutput(jsonData[0].toString(), jsonData[1].toString(), jsonData[2].toString(), jsonData[3].toString()));
+        }
+        else {
+          Navigator.pushNamed(
+              context,
+              MyApp.routeName,
+              arguments: LoginOutput(jsonData[0].toString(), jsonData[1].toString(), jsonData[2].toString(), jsonData[3].toString()));
+        }
       }
 
     }

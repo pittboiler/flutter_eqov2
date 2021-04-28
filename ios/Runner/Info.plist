@@ -49,5 +49,12 @@
     <true/>
     <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
     <true/>
+    <key>NSAppleMusicUsageDescription</key>
+    <string>Upload music to help get fans to your shows</string>
+    <key>UIBackgroundModes</key>
+    <array>
+       <string>fetch</string>
+       <string>remote-notification</string>
+    </array>
 </dict>
 </plist>

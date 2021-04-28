@@ -1,14 +1,20 @@
 import 'dart:io';
 
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_eqo_v2/login.dart';
 import 'package:flutter_eqo_v2/main.dart';
 import 'package:flutter_eqo_v2/register.dart';
+import 'package:flutter_ffmpeg/flutter_ffmpeg.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:core';
 import 'package:http/http.dart' as http;
 import 'package:async/async.dart';
 import 'package:flutter_masked_text/flutter_masked_text.dart';
+import 'package:flutter_typeahead/flutter_typeahead.dart';
+import 'package:flutter_typeahead/cupertino_flutter_typeahead.dart';
+import 'package:path_provider/path_provider.dart';
 
 void main() => runApp(EventHandling());
 
@@ -45,6 +51,8 @@ class EventHandlingPage extends StatefulWidget {
 
 class _MyEventFormState extends State<EventHandlingPage> {
 
+  final FlutterFFmpeg _flutterFFmpeg = new FlutterFFmpeg();
+
   EventInputs event_args;
 
   _MyEventFormState(EventInputs event_args) {
@@ -64,6 +72,8 @@ class _MyEventFormState extends State<EventHandlingPage> {
   bool over_21_checkbox = false;
   String under_21_flag = "0";
 
+  set selectedArtist(String selectedArtist) {}
+
   @override
   void dispose() {
     // Clean up the controller when the widget is disposed.
@@ -78,6 +88,112 @@ class _MyEventFormState extends State<EventHandlingPage> {
   }
 
   //FUNCTIONS HAVE NOT YET BEEN TESTED
+
+  //function for handling audio medley creation
+
+  Future<List<String>> MedleyCreation(artist_1, artist_2, artist_3, show_id)
+
+    async{
+
+      Map<String, String> input_get_urls = {
+        "artist_1" : artist_1,
+        "artist_2" : artist_2,
+        "artist_3": artist_3,
+        "show_id" : show_id,
+      };
+
+      //get data from database
+
+      var url_login = 'https://eqomusic.com/mobile/medley_inputs.php';
+
+      var data = await http.post(url_login,
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/x-www-form-urlencoded'
+          },
+          body: input_get_urls
+      );
+
+      var jsonData = json.decode(data.body);
+
+      if(jsonData.contains('Error') != true){
+
+        //for each url: check for non-empty, if non-empty -> extract 20 second sample -> merge all into one file, put file on firebase
+
+        String song_1_url = jsonData["song_1_url"];
+        String song_2_url = jsonData["song_2_url"];
+        String song_3_url = jsonData["song_3_url"];
+
+        Directory appDocumentDir = await getApplicationDocumentsDirectory();
+        String rawDocumentPath = appDocumentDir.path;
+
+        //NOTE: ASSUMES ALL SONGS LAST AT LEAST 1 MINUTE; WILL NEED TO ADJUST EVENTUALLY
+
+        String song_1_output = "";
+        String song_2_output = "";
+        String song_3_output = "";
+
+        if(song_1_url.length > 0) {
+          var song_1_arguments = ["-i", song_1_url, "-ss", "40 to 60 -c copy", "song_1_output.mp3"];
+          _flutterFFmpeg.executeWithArguments(song_1_arguments).then((rc) => print("FFmpeg song 1 process exited with rc $rc"));
+          song_1_output = rawDocumentPath + "/song_1_output.mp3";
+        }
+
+        if(song_2_url.length > 0) {
+          var song_2_arguments = ["-i", song_2_url, "-ss", "40 to 60 -c copy", "song_2_output.mp3"];
+          _flutterFFmpeg.executeWithArguments(song_2_arguments).then((rc) => print("FFmpeg song 2 process exited with rc $rc"));
+          song_2_output = rawDocumentPath + "/song_2_output.mp3";
+        }
+
+        if(song_3_url.length > 0) {
+          var song_3_arguments = ["-i", song_3_url, "-ss", "40 to 60 -c copy", "song_3_output.mp3"];
+          _flutterFFmpeg.executeWithArguments(song_3_arguments).then((rc) => print("FFmpeg song 3 process exited with rc $rc"));
+          song_3_output = rawDocumentPath + "/song_3_output.mp3";
+        }
+
+        //clean up concatenation line for ffmpeg submission
+        String files_for_concatenation = song_1_output + "|" + song_2_output + "|" + song_3_output;
+        files_for_concatenation = files_for_concatenation.replaceAll("||", "|");
+        if(files_for_concatenation.substring(0,1) == "|"){
+          files_for_concatenation = files_for_concatenation.substring(1);
+        }
+        if(files_for_concatenation.substring(files_for_concatenation.length - 1) == "|"){
+          files_for_concatenation = files_for_concatenation.substring(files_for_concatenation.length - 1);
+        }
+        files_for_concatenation = "concat:" + files_for_concatenation;
+
+        //concatenates, sends file to firebase, gets download url, sends to SQL database for use in main tab
+        var file_concatenation_arguments = ["-i", files_for_concatenation, "acodec copy", "medley_file_output.mp3"];
+        _flutterFFmpeg.executeWithArguments(file_concatenation_arguments).then((rc) => print("FFmpeg medley process exited with rc $rc"));
+        String medley_file_output = rawDocumentPath + "/medley_file_output.mp3";
+
+        File file = File(medley_file_output);
+
+        String url = "";
+
+        StorageReference storageReference;
+        final StorageUploadTask uploadTask = storageReference.putFile(file);
+        final StorageTaskSnapshot downloadUrl = (await uploadTask.onComplete);
+        url = (await downloadUrl.ref.getDownloadURL());
+
+        Map<String, String> input_medley_download_url = {
+          "show_id": show_id,
+          "medley_url": url,
+        };
+
+        var url_login = 'https://eqomusic.com/mobile/medley_link_update.php';
+
+        var data = await http.post(url_login,
+            headers: {
+              'Accept': 'application/json',
+              'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            body: input_medley_download_url
+        );
+
+      }
+
+    }
 
   //function for creating event
 
@@ -130,10 +246,15 @@ class _MyEventFormState extends State<EventHandlingPage> {
 
     }
     else{
+
+      var show_id = jsonData["show_id"];
+
+      MedleyCreation(input_artist_1, input_artist_2, input_artist_3, show_id);
+
       Navigator.pushNamed(
           context,
           MyApp.routeName,
-          arguments: UserData(event_args.user_id, event_args.user_type, event_args.user_city, event_args.user_state));
+          arguments: LoginOutput(event_args.user_id, event_args.user_type, event_args.user_city, event_args.user_state));
     }
 
   }
@@ -189,12 +310,12 @@ class _MyEventFormState extends State<EventHandlingPage> {
       Navigator.pushNamed(
           context,
           MyApp.routeName,
-          arguments: UserData(event_args.user_id, event_args.user_type, event_args.user_city, event_args.user_state));
+          arguments: LoginOutput(event_args.user_id, event_args.user_type, event_args.user_city, event_args.user_state));
     }
 
   }
 
-  //function for updating event
+  //function for canceling event
 
   Future<List<EventInputs>> CancelEvent(input_show_id)
 
@@ -232,18 +353,66 @@ class _MyEventFormState extends State<EventHandlingPage> {
 
     }
     else{
+
       Navigator.pushNamed(
           context,
           MyApp.routeName,
-          arguments: UserData(event_args.user_id, event_args.user_type, event_args.user_city, event_args.user_state));
+          arguments: LoginOutput(event_args.user_id, event_args.user_type, event_args.user_city, event_args.user_state));
     }
 
+  }
+
+  //function for acquiring all artist names (for use in type aheads for choosing artists)
+
+  Future<List<String>> getArtistList()
+
+  async {
+
+    //get data from database
+
+    var url_login = 'https://eqomusic.com/mobile/get_artist_list.php';
+
+    var data = await http.post(url_login,
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+    );
+
+    var jsonData = json.decode(data.body);
+
+    List<String> artistNames = [];
+
+    for (var i in jsonData) {
+      artistNames.add(i["artist_name"]);
+      print(i["artist_name"]);
+    }
+
+    return artistNames;
+
+  }
+
+  List<String> artists;
+
+//find and create list of matched strings
+  List<String> _getSuggestions(String query) {
+    List<String> matches = List();
+
+    matches.addAll(artists);
+
+    matches.retainWhere((s) => s.toLowerCase().contains(query.toLowerCase()));
+    return matches;
+  }
+
+  //gets user list from db
+  void getArtists() async {
+    artists = await getArtistList();
   }
 
   @override
   Widget build(BuildContext context) {
 
-
+    getArtists();
 
     //updates field values if show is being updated
     if(event_args.update_flag == true) {
@@ -263,34 +432,97 @@ class _MyEventFormState extends State<EventHandlingPage> {
       genreController = TextEditingController(text: event_args.genre);
     }
 
-    final OpenerField = TextField(
+    final OpenerField = TypeAheadFormField(
+      textFieldConfiguration: TextFieldConfiguration(
       style: style,
       controller: openerController,
       decoration: InputDecoration(
           contentPadding: EdgeInsets.fromLTRB(20.0, 15.0, 20.0, 15.0),
           hintText: "Opening Artist",
           border:
-          OutlineInputBorder(borderRadius: BorderRadius.circular(32.0))),
+          OutlineInputBorder(borderRadius: BorderRadius.circular(32.0)))),
+      suggestionsCallback: (pattern) {
+        return _getSuggestions(pattern);
+      },
+      itemBuilder: (context, suggestion) {
+        return ListTile(
+          title: Text(suggestion),
+        );
+      },
+      transitionBuilder: (context, suggestionsBox, controller) {
+        return suggestionsBox;
+      },
+      onSuggestionSelected: (suggestion) {
+        this.openerController.text = suggestion;
+      },
+      validator: (value) {
+        if (value.isEmpty) {
+          return 'Please select an artist';
+        }
+      },
+      onSaved: (value) => this.selectedArtist = value,
     );
 
-    final MiddleField = TextField(
-      style: style,
-      controller: middleController,
-      decoration: InputDecoration(
-          contentPadding: EdgeInsets.fromLTRB(20.0, 15.0, 20.0, 15.0),
-          hintText: "Following Artist",
-          border:
-          OutlineInputBorder(borderRadius: BorderRadius.circular(32.0))),
+    final MiddleField = TypeAheadFormField(
+      textFieldConfiguration: TextFieldConfiguration(
+          style: style,
+          controller: middleController,
+          decoration: InputDecoration(
+              contentPadding: EdgeInsets.fromLTRB(20.0, 15.0, 20.0, 15.0),
+              hintText: "Following Artist",
+              border:
+              OutlineInputBorder(borderRadius: BorderRadius.circular(32.0)))),
+      suggestionsCallback: (pattern) {
+        return _getSuggestions(pattern);
+      },
+      itemBuilder: (context, suggestion) {
+        return ListTile(
+          title: Text(suggestion),
+        );
+      },
+      transitionBuilder: (context, suggestionsBox, controller) {
+        return suggestionsBox;
+      },
+      onSuggestionSelected: (suggestion) {
+        this.openerController.text = suggestion;
+      },
+      validator: (value) {
+        if (value.isEmpty) {
+          return 'Please select an artist';
+        }
+      },
+      onSaved: (value) => this.selectedArtist = value,
     );
 
-    final CloserField = TextField(
-      style: style,
-      controller: closerController,
-      decoration: InputDecoration(
-          contentPadding: EdgeInsets.fromLTRB(20.0, 15.0, 20.0, 15.0),
-          hintText: "Closing Artist",
-          border:
-          OutlineInputBorder(borderRadius: BorderRadius.circular(32.0))),
+    final CloserField = TypeAheadFormField(
+      textFieldConfiguration: TextFieldConfiguration(
+          style: style,
+          controller: closerController,
+          decoration: InputDecoration(
+              contentPadding: EdgeInsets.fromLTRB(20.0, 15.0, 20.0, 15.0),
+              hintText: "Closing Artist",
+              border:
+              OutlineInputBorder(borderRadius: BorderRadius.circular(32.0)))),
+      suggestionsCallback: (pattern) {
+        return _getSuggestions(pattern);
+      },
+      itemBuilder: (context, suggestion) {
+        return ListTile(
+          title: Text(suggestion),
+        );
+      },
+      transitionBuilder: (context, suggestionsBox, controller) {
+        return suggestionsBox;
+      },
+      onSuggestionSelected: (suggestion) {
+        this.openerController.text = suggestion;
+      },
+      validator: (value) {
+        if (value.isEmpty) {
+          return 'Please select an artist';
+        }
+      },
+      onSaved: (value) => this.selectedArtist = value,
     );
 
     final dateField = TextField(
@@ -496,4 +728,10 @@ class EventInputs {
 
   EventInputs(this.user_id, this.user_type, this.user_city, this.user_state, this.update_flag, this.show_id, this.open_artist, this.follow_artist, this.closer_artist, this.year_input, this.month_input, this.day_input, this.time_input, this.max_attendance, this.genre);
 
+}
+
+class ArtistName{
+  final String artist_name;
+
+  ArtistName(this.artist_name);
 }

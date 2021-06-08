@@ -98,13 +98,13 @@ class _MyLoginState extends State<MyLoginPage> {
           Navigator.pushNamed(
               context,
               ArtistMain.routeName,
-              arguments: LoginOutput(jsonData[0].toString(), jsonData[1].toString(), jsonData[2].toString(), jsonData[3].toString()));
+              arguments: LoginOutput(jsonData[0].toString(), jsonData[1].toString(), jsonData[2].toString(), jsonData[3].toString(), jsonData[4].toString(), jsonData[5].toString()));
         }
         else {
           Navigator.pushNamed(
               context,
               MyApp.routeName,
-              arguments: LoginOutput(jsonData[0].toString(), jsonData[1].toString(), jsonData[2].toString(), jsonData[3].toString()));
+              arguments: LoginOutput(jsonData[0].toString(), jsonData[1].toString(), jsonData[2].toString(), jsonData[3].toString(), jsonData[4].toString(), jsonData[5].toString()));
         }
       }
 
@@ -120,6 +120,10 @@ class _MyLoginState extends State<MyLoginPage> {
     }
 
   }
+
+  //******************************************************************************************************************
+  //Start of the app UI build
+  //******************************************************************************************************************
 
   @override
   Widget build(BuildContext context) {
@@ -240,7 +244,9 @@ class LoginOutput {
   final String user_type;
   final String user_city;
   final String user_state;
+  final String subscription_flag;
+  final String final_month_flag;
 
-  LoginOutput(this.user_id, this.user_type, this.user_city, this.user_state);
+  LoginOutput(this.user_id, this.user_type, this.user_city, this.user_state, this.subscription_flag, this.final_month_flag);
 
 }

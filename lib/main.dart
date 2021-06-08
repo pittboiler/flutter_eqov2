@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_eqo_v2/event_handling.dart';
 import 'package:flutter_eqo_v2/login.dart';
+import 'package:flutter_eqo_v2/payment_screen.dart';
 import 'package:flutter_eqo_v2/scan_QR.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:http/http.dart' as http;
@@ -167,6 +168,7 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
 
   int venue_pull_counter = 0;
 
+  //function for acquiring dashboard data
   Future<void> VenueInfo()
 
   async {
@@ -525,6 +527,23 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
 
       }
 
+  //function for calling an alert for unsubscribed folks
+  void SubscriptionAlert() async {
+
+      return showDialog(
+          context: context,
+          builder: (context){
+            return AlertDialog(title: Text("Subscribe to find shows to see!"));
+          }
+      );
+
+    }
+
+    //******************************************************************************************************************
+    //Start of the app UI build
+    //******************************************************************************************************************
+
+
       @override
       Widget build(BuildContext context) {
 
@@ -534,354 +553,384 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
 
         _getCurrentLocation();
 
-        return DefaultTabController(length: 2,
-            child:
-            Scaffold(
-              appBar: AppBar(
-                bottom: TabBar(
-                  tabs: [
-                    Text("Local Shows"),
-                    Text("Your Shows"),
-                  ],
-                ),
-                title: Text('Flutter EQO'),
-              ),
-              body: TabBarView(
-                  children: [(
+        if(args.user_type == "venue" && venue_pull_counter<1) {
+          VenueInfo();
+        }
 
-                      Column(children:[
-
-                      Container(
-                      height:250,
-                      child:(
-                      GoogleMap(
-                      markers: localMarkers,
-                        onMapCreated: _onMapCreated,
-                      myLocationEnabled: true,
-                      initialCameraPosition: CameraPosition(
-                        target: center,
-                        zoom: 11.0,
+          return DefaultTabController(length: 2,
+              child:
+              Scaffold(
+                  appBar: AppBar(
+                      bottom: TabBar(
+                        tabs: [
+                          Text("Local Shows"),
+                          Text("Your Shows"),
+                        ],
                       ),
-                      )
-                      )),
+                      title: Text('Flutter EQO'),
+                      actions: [
+                        IconButton(
+                          icon: Icon(
+                            Icons.settings,
+                            color: Colors.white,
+                          ),
+                          onPressed: () {
+                            Navigator.pushNamed(
+                                context,
+                                Payment.routeName,
+                                arguments: LoginOutput(args.user_id, args.user_type, args.user_city, args.user_state, args.subscription_flag, args.final_month_flag));
+                          },
+                        )
+                      ]
+                  ),
+                  body: TabBarView(
+                      children: [(
 
-                      (
-                      Expanded( child: FutureBuilder(
-                        future: getLocalShows(),
-                        builder: (BuildContext context, AsyncSnapshot snapshot){
+                          Column(children:[
 
-                          if(snapshot.data == null) {
-                            return Container(
-                                child: Center(
-                                    child: new CircularProgressIndicator()
-                                )
-                            );
-                          }
-
-                          return ListView.builder(
-                              itemCount: snapshot.data.length,
-                              itemBuilder: (context, int){
-                                return ListTile(
-                                  title: FlatButton(
-                                      child:
-                                        Row(
-                                          children: [
-                                            Expanded(
-                                              flex: 2,
-                                              child: GridView.count(
-                                                  crossAxisCount: 1,
-                                                  childAspectRatio: 2.9,
-                                                  padding: const EdgeInsets.all(1.0),
-                                                  mainAxisSpacing: 0,
-                                                  crossAxisSpacing: 10.0,
-                                                  physics: NeverScrollableScrollPhysics(),
-                                                  shrinkWrap: true,
-                                                  children: [
-                                                    Align(alignment: Alignment.center, child: Text(snapshot.data[int].month, textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17))),
-                                                    Align(alignment: Alignment.center, child: Text(snapshot.data[int].day, textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17))),
-                                                    Align(alignment: Alignment.center, child: Text(snapshot.data[int].time.substring(0,5), textAlign: TextAlign.center, style: TextStyle(fontStyle: FontStyle.italic))),
-                                                  ]
-                                              )
-                                            ),
-                                            Expanded(
-                                              flex: 8,
-                                              child: Column(
-                                                  children: [
-                                                    GridView.count(
-                                                            crossAxisCount: 3,
-                                                            childAspectRatio: 2.5,
-                                                            padding: const EdgeInsets.all(1.0),
-                                                            mainAxisSpacing: 0,
-                                                            crossAxisSpacing: 10.0,
-                                                            physics: NeverScrollableScrollPhysics(),
-                                                            shrinkWrap: true,
-                                                            children: [
-                                                              Align(alignment: Alignment.center, child: Text(snapshot.data[int].venue, textAlign: TextAlign.center)),
-                                                              Align(alignment: Alignment.center, child: Text(snapshot.data[int].genre, textAlign: TextAlign.center)),
-
-                                                              snapshot.data[int].under_21_flag == "0"?
-                                                              Align(alignment: Alignment.center, child: Text("18+", textAlign: TextAlign.center))
-                                                                  :
-                                                              Align(alignment: Alignment.center, child: Text("21+", textAlign: TextAlign.center)),
-                                                            ]
-                                                        ),
-                                                    GridView.count(
-                                                          crossAxisCount: 3,
-                                                          childAspectRatio: 2.5,
-                                                          padding: const EdgeInsets.all(1.0),
-                                                          mainAxisSpacing: 0,
-                                                          crossAxisSpacing: 10.0,
-                                                          physics: NeverScrollableScrollPhysics(),
-                                                          shrinkWrap: true,
-                                                          children: [
-                                                            Align(alignment: Alignment.center, child: Text(snapshot.data[int].artist_1, textAlign: TextAlign.center)),
-                                                            Align(alignment: Alignment.center, child: Text(snapshot.data[int].artist_2, textAlign: TextAlign.center)),
-                                                            Align(alignment: Alignment.center, child: Text(snapshot.data[int].artist_3, textAlign: TextAlign.center)),
-                                                          ]
-                                                      )
-                                              ]))
-                                          ]
+                            Container(
+                                height:250,
+                                child:(
+                                    GoogleMap(
+                                      markers: localMarkers,
+                                      onMapCreated: _onMapCreated,
+                                      myLocationEnabled: true,
+                                      initialCameraPosition: CameraPosition(
+                                        target: center,
+                                        zoom: 11.0,
                                       ),
-                                  onPressed: () {
-                                    mapRecenter(snapshot.data[int].venue_address, snapshot.data[int].venue_zip_code);
-                                  }
-                                  ),
+                                    )
+                                )),
 
-                                    trailing:
-                                    Row(
-                                      children: [
+                            (
 
-                                        //adds the play/pause button referencing the url from the show database pull
+                                Expanded( child: FutureBuilder(
 
-                                        snapshot.data[int].audio_link == ""?
-                                        null
-                                            :
-                                        GestureDetector(child: Icon(Icons.play_circle_fill, color: snapshot.data[int].row_play_pause == 0 ? Colors.green: Colors.red),
-                                            onTap: (){
+                                  //check subscription here; add in both subscription and end subscription flag for 1 to display when subscription is active or in the last month
+                                  //note, the subscription flag is always 1 for venues/artists; for fans, it is dependent on payment
 
-                                              //logic: if music is not being played, turn button red and play audio
-                                              //logic: if music is not being played, then see below:
-                                              //sub-logic: if button is green -> turn all buttons green, play new song, turn button red, play_pause = 1
+                                    future: getLocalShows(),
 
-                                              if(play_pause_flag == 0){
+                                    builder: (BuildContext context, AsyncSnapshot snapshot){
 
-                                                //case where music is not being played (start playing audio)
+                                      if(snapshot.data == null) {
+                                        if(args.subscription_flag == "1" || args.final_month_flag == "1") {
+                                          return Container(
+                                              child: Center(
+                                                  child: new CircularProgressIndicator()
+                                              )
+                                          );
+                                        }
+                                        else {
+                                          SubscriptionAlert();
+                                          return null;
+                                        }
+                                      }
 
-                                                audioPlayer.play(snapshot.data[int].audio_link);
+                                      return ListView.builder(
+                                        itemCount: args.subscription_flag == "1" || args.final_month_flag == "1" ? snapshot.data.length : null,
+                                        itemBuilder: (context, int){
+                                          return ListTile(
+                                              title: FlatButton(
+                                                  child:
+                                                  Row(
+                                                      children: [
+                                                        Expanded(
+                                                            flex: 2,
+                                                            child: GridView.count(
+                                                                crossAxisCount: 1,
+                                                                childAspectRatio: 2.9,
+                                                                padding: const EdgeInsets.all(1.0),
+                                                                mainAxisSpacing: 0,
+                                                                crossAxisSpacing: 10.0,
+                                                                physics: NeverScrollableScrollPhysics(),
+                                                                shrinkWrap: true,
+                                                                children: [
+                                                                  Align(alignment: Alignment.center, child: Text(snapshot.data[int].month, textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17))),
+                                                                  Align(alignment: Alignment.center, child: Text(snapshot.data[int].day, textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17))),
+                                                                  Align(alignment: Alignment.center, child: Text(snapshot.data[int].time.substring(0,5), textAlign: TextAlign.center, style: TextStyle(fontStyle: FontStyle.italic))),
+                                                                ]
+                                                            )
+                                                        ),
+                                                        Expanded(
+                                                            flex: 8,
+                                                            child: Column(
+                                                                children: [
+                                                                  GridView.count(
+                                                                      crossAxisCount: 3,
+                                                                      childAspectRatio: 2.5,
+                                                                      padding: const EdgeInsets.all(1.0),
+                                                                      mainAxisSpacing: 0,
+                                                                      crossAxisSpacing: 10.0,
+                                                                      physics: NeverScrollableScrollPhysics(),
+                                                                      shrinkWrap: true,
+                                                                      children: [
+                                                                        Align(alignment: Alignment.center, child: Text(snapshot.data[int].venue, textAlign: TextAlign.center)),
+                                                                        Align(alignment: Alignment.center, child: Text(snapshot.data[int].genre, textAlign: TextAlign.center)),
 
-                                                setState(() {
-                                                  snapshot.data[int].row_play_pause = 1;
-                                                  play_pause_flag = 1;
-                                                });
-                                              }
+                                                                        snapshot.data[int].under_21_flag == "0"?
+                                                                        Align(alignment: Alignment.center, child: Text("18+", textAlign: TextAlign.center))
+                                                                            :
+                                                                        Align(alignment: Alignment.center, child: Text("21+", textAlign: TextAlign.center)),
+                                                                      ]
+                                                                  ),
+                                                                  GridView.count(
+                                                                      crossAxisCount: 3,
+                                                                      childAspectRatio: 2.5,
+                                                                      padding: const EdgeInsets.all(1.0),
+                                                                      mainAxisSpacing: 0,
+                                                                      crossAxisSpacing: 10.0,
+                                                                      physics: NeverScrollableScrollPhysics(),
+                                                                      shrinkWrap: true,
+                                                                      children: [
+                                                                        Align(alignment: Alignment.center, child: Text(snapshot.data[int].artist_1, textAlign: TextAlign.center)),
+                                                                        Align(alignment: Alignment.center, child: Text(snapshot.data[int].artist_2, textAlign: TextAlign.center)),
+                                                                        Align(alignment: Alignment.center, child: Text(snapshot.data[int].artist_3, textAlign: TextAlign.center)),
+                                                                      ]
+                                                                  )
+                                                                ]))
+                                                      ]
+                                                  ),
+                                                  onPressed: () {
+                                                    mapRecenter(snapshot.data[int].venue_address, snapshot.data[int].venue_zip_code);
+                                                  }
+                                              ),
 
-                                              else{
-
-                                                //case where music is being played from the same row in which the button is pressed (simple pause)
-
-                                                if(snapshot.data[int].row_play_pause == 1){
-
-                                                  audioPlayer.pause();
-
-                                                  setState(() {
-                                                    snapshot.data[int].row_play_pause = 0;
-                                                    play_pause_flag = 0;
-                                                  });
-
-                                                }
-
-                                                else{
-
-                                                  //case where music is being played from a different row (need to reset all buttons, pause audio stream, then play new music
-
-                                                  audioPlayer.pause();
-                                                  audioPlayer.play(snapshot.data[int].audio_link);
-
-                                                  setState(() {
-
-                                                    for(var i = 0; i<=int; i++){
-                                                      snapshot.data[i].row_play_pause = 0;
-                                                    }
-
-                                                    snapshot.data[int].row_play_pause = 1;
-                                                    play_pause_flag = 1;
-
-                                                  });
-
-                                                }
-                                              }
-                                            }
-                                        ),
-
-                                        //keeps attendance buttons for fans only
-
-                                        args.user_type != "fan"?
-                                            null
-                                            :
-                                            snapshot.data[int].attending_flag == 1?
-                                                Icon(Icons.check_circle_outline, color: Colors.green)
-                                                : GestureDetector(child: Icon(Icons.control_point_rounded, color: Colors.orange),
-
-                                            onTap: (){
-                                              my_show_map_update_counter = 0;
-                                              String user_id_input = args.user_id;
-                                              String show_id_input = snapshot.data[int].show_id;
-                                              attendButton(user_id_input, show_id_input);
-                                              setState(() {
-                                                Icon(Icons.check_circle_outline, color: Colors.green);
-                                              });
-                                            }
-                                            )
-                                    ])
-                                );
-                              },
-                            );
-                              }
-                              )
-                      )),
-
-                      ])),
-
-                    (
-
-                        Column(children:[
-
-                          Container(
-                              height:250,
-                              child:(
-
-                                  //TO DO: have map be only for fans; add a separate dashboard for venues
-
-                                  args.user_type == "fan" ?
-
-                                  GoogleMap(
-                                    markers: myShowMarkers,
-                                    onMapCreated: _onMyShowMapCreated,
-                                    myLocationEnabled: true,
-                                    initialCameraPosition: CameraPosition(
-                                      target: center,
-                                      zoom: 11.0,
-                                    ),
-                                  )
-
-                                  :
-
-                                  Column(
-
-                                      children: [
-
-                                        SizedBox(height: 30.0),
-
-                                        Expanded(
-                                            flex: 10,
-                                            child: GridView.count(
-                                                crossAxisCount: 2,
-                                                childAspectRatio: 3,
-                                                padding: const EdgeInsets.all(1.0),
-                                                mainAxisSpacing: 0,
-                                                crossAxisSpacing: 10.0,
-                                                physics: NeverScrollableScrollPhysics(),
-                                                shrinkWrap: true,
-                                                children: [
-                                                  Align(alignment: Alignment.center, child: Text("Last 5 Shows Averages", textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17))),
-                                                  Align(alignment: Alignment.center, child: Text("Upcoming", textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17))),
-                                                  Align(alignment: Alignment.center, child: Text(avg_past_rsvps.toString() + " RSVPs", textAlign: TextAlign.center, style: TextStyle(fontStyle: FontStyle.italic, fontSize: 15))),
-                                                  Align(alignment: Alignment.center, child: Text(avg_f_rsvps.toString() + " Avg. RSVPs", textAlign: TextAlign.center, style: TextStyle(fontStyle: FontStyle.italic, fontSize: 15))),
-                                                  Align(alignment: Alignment.center, child: Text(avg_attendance.toString() + " Actual Attendance", textAlign: TextAlign.center, style: TextStyle(fontStyle: FontStyle.italic, fontSize: 15))),
-                                                  Align(alignment: Alignment.center, child: Text(upcoming_shows.toString() + " Upcoming Shows", textAlign: TextAlign.center, style: TextStyle(fontStyle: FontStyle.italic, fontSize: 15))),
-                                                ]
-                                            )
-                                        ),
-
-                                      ])
-
-                              )),
-
-                          (
-                              Expanded( child: FutureBuilder(
-                                future: getMyShows(),
-                                builder: (BuildContext context, AsyncSnapshot snapshot){
-
-                                  if(snapshot.data == null) {
-                                    return Container(
-                                        child: Center(
-                                            child: new CircularProgressIndicator()
-                                        )
-                                    );
-                                  }
-
-                                  return ListView.builder(
-                                    itemCount: snapshot.data.length,
-                                    itemBuilder: (context, int){
-                                      return ListTile(
-
-                                          title: FlatButton(
-                                              child:
+                                              trailing:
                                               Row(
                                                   children: [
-                                                    Expanded(
-                                                        flex: 2,
-                                                        child: GridView.count(
-                                                            crossAxisCount: 1,
-                                                            childAspectRatio: 2.9,
-                                                            padding: const EdgeInsets.all(1.0),
-                                                            mainAxisSpacing: 0,
-                                                            crossAxisSpacing: 10.0,
-                                                            physics: NeverScrollableScrollPhysics(),
-                                                            shrinkWrap: true,
-                                                            children: [
-                                                              Align(alignment: Alignment.center, child: Text(snapshot.data[int].month, textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17))),
-                                                              Align(alignment: Alignment.center, child: Text(snapshot.data[int].day, textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17))),
-                                                              Align(alignment: Alignment.center, child: Text(snapshot.data[int].time.substring(0,5), textAlign: TextAlign.center, style: TextStyle(fontStyle: FontStyle.italic))),
-                                                            ]
-                                                        )
+
+                                                    //adds the play/pause button referencing the url from the show database pull
+
+                                                    snapshot.data[int].audio_link == ""?
+                                                    null
+                                                        :
+                                                    GestureDetector(child: Icon(Icons.play_circle_fill, color: snapshot.data[int].row_play_pause == 0 ? Colors.green: Colors.red),
+                                                        onTap: (){
+
+                                                          //logic: if music is not being played, turn button red and play audio
+                                                          //logic: if music is not being played, then see below:
+                                                          //sub-logic: if button is green -> turn all buttons green, play new song, turn button red, play_pause = 1
+
+                                                          if(play_pause_flag == 0){
+
+                                                            //case where music is not being played (start playing audio)
+
+                                                            audioPlayer.play(snapshot.data[int].audio_link);
+
+                                                            setState(() {
+                                                              snapshot.data[int].row_play_pause = 1;
+                                                              play_pause_flag = 1;
+                                                            });
+                                                          }
+
+                                                          else{
+
+                                                            //case where music is being played from the same row in which the button is pressed (simple pause)
+
+                                                            if(snapshot.data[int].row_play_pause == 1){
+
+                                                              audioPlayer.pause();
+
+                                                              setState(() {
+                                                                snapshot.data[int].row_play_pause = 0;
+                                                                play_pause_flag = 0;
+                                                              });
+
+                                                            }
+
+                                                            else{
+
+                                                              //case where music is being played from a different row (need to reset all buttons, pause audio stream, then play new music
+
+                                                              audioPlayer.pause();
+                                                              audioPlayer.play(snapshot.data[int].audio_link);
+
+                                                              setState(() {
+
+                                                                for(var i = 0; i<=int; i++){
+                                                                  snapshot.data[i].row_play_pause = 0;
+                                                                }
+
+                                                                snapshot.data[int].row_play_pause = 1;
+                                                                play_pause_flag = 1;
+
+                                                              });
+
+                                                            }
+                                                          }
+                                                        }
                                                     ),
-                                                    Expanded(
-                                                        flex: 8,
-                                                        child: Column(
-                                                            children: [
-                                                              GridView.count(
-                                                                  crossAxisCount: 3,
-                                                                  childAspectRatio: 2.5,
-                                                                  padding: const EdgeInsets.all(1.0),
-                                                                  mainAxisSpacing: 0,
-                                                                  crossAxisSpacing: 10.0,
-                                                                  physics: NeverScrollableScrollPhysics(),
-                                                                  shrinkWrap: true,
-                                                                  children: [
-                                                                    Align(alignment: Alignment.center, child: Text(snapshot.data[int].venue, textAlign: TextAlign.center)),
-                                                                    Align(alignment: Alignment.center, child: Text(snapshot.data[int].genre, textAlign: TextAlign.center)),
 
-                                                                    snapshot.data[int].under_21_flag == "0"?
-                                                                    Align(alignment: Alignment.center, child: Text("18+", textAlign: TextAlign.center))
-                                                                        :
-                                                                    Align(alignment: Alignment.center, child: Text("21+", textAlign: TextAlign.center)),
-                                                                  ]
-                                                              ),
-                                                              GridView.count(
-                                                                  crossAxisCount: 3,
-                                                                  childAspectRatio: 2.5,
-                                                                  padding: const EdgeInsets.all(1.0),
-                                                                  mainAxisSpacing: 0,
-                                                                  crossAxisSpacing: 10.0,
-                                                                  physics: NeverScrollableScrollPhysics(),
-                                                                  shrinkWrap: true,
-                                                                  children: [
-                                                                    Align(alignment: Alignment.center, child: Text(snapshot.data[int].artist_1, textAlign: TextAlign.center)),
-                                                                    Align(alignment: Alignment.center, child: Text(snapshot.data[int].artist_2, textAlign: TextAlign.center)),
-                                                                    Align(alignment: Alignment.center, child: Text(snapshot.data[int].artist_3, textAlign: TextAlign.center)),
-                                                                  ]
-                                                              )
-                                                            ]))
-                                                  ]
+                                                    //keeps attendance buttons for fans only
+
+                                                    args.user_type != "fan"?
+                                                    null
+                                                        :
+                                                    snapshot.data[int].attending_flag == 1?
+                                                    Icon(Icons.check_circle_outline, color: Colors.green)
+                                                        : GestureDetector(child: Icon(Icons.control_point_rounded, color: Colors.orange),
+
+                                                        onTap: (){
+                                                          my_show_map_update_counter = 0;
+                                                          String user_id_input = args.user_id;
+                                                          String show_id_input = snapshot.data[int].show_id;
+                                                          attendButton(user_id_input, show_id_input);
+                                                          setState(() {
+                                                            Icon(Icons.check_circle_outline, color: Colors.green);
+                                                          });
+                                                        }
+                                                    )
+                                                  ])
+                                          );
+                                        },
+                                      );
+                                    }
+                                )
+                                )),
+
+                          ])),
+
+                        (
+
+                            Column(children:[
+
+                              Container(
+                                  height:250,
+                                  child:(
+
+                                      //map is for fans only; dashboard view for venues put in place
+
+                                      args.user_type == "fan" ?
+
+                                      GoogleMap(
+                                        markers: myShowMarkers,
+                                        onMapCreated: _onMyShowMapCreated,
+                                        myLocationEnabled: true,
+                                        initialCameraPosition: CameraPosition(
+                                          target: center,
+                                          zoom: 11.0,
+                                        ),
+                                      )
+
+                                          :
+
+                                      Column(
+
+                                          children: [
+
+                                            SizedBox(height: 30.0),
+
+                                            Expanded(
+                                                flex: 10,
+                                                child: GridView.count(
+                                                    crossAxisCount: 2,
+                                                    childAspectRatio: 3,
+                                                    padding: const EdgeInsets.all(1.0),
+                                                    mainAxisSpacing: 0,
+                                                    crossAxisSpacing: 10.0,
+                                                    physics: NeverScrollableScrollPhysics(),
+                                                    shrinkWrap: true,
+                                                    children: [
+                                                      Align(alignment: Alignment.center, child: Text("Last 5 Shows Averages", textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17))),
+                                                      Align(alignment: Alignment.center, child: Text("Upcoming", textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17))),
+                                                      Align(alignment: Alignment.center, child: Text(avg_past_rsvps.toString() + " RSVPs", textAlign: TextAlign.center, style: TextStyle(fontStyle: FontStyle.italic, fontSize: 15))),
+                                                      Align(alignment: Alignment.center, child: Text(avg_f_rsvps.toString() + " Avg. RSVPs", textAlign: TextAlign.center, style: TextStyle(fontStyle: FontStyle.italic, fontSize: 15))),
+                                                      Align(alignment: Alignment.center, child: Text(avg_attendance.toString() + " Actual Attendance", textAlign: TextAlign.center, style: TextStyle(fontStyle: FontStyle.italic, fontSize: 15))),
+                                                      Align(alignment: Alignment.center, child: Text(upcoming_shows.toString() + " Upcoming Shows", textAlign: TextAlign.center, style: TextStyle(fontStyle: FontStyle.italic, fontSize: 15))),
+                                                    ]
+                                                )
+                                            ),
+
+                                          ])
+
+                                  )),
+
+                              (
+                                  Expanded( child: FutureBuilder(
+                                    future: getMyShows(),
+                                    builder: (BuildContext context, AsyncSnapshot snapshot){
+
+                                      if(snapshot.data == null) {
+                                        return Container(
+                                            child: Center(
+                                                child: new CircularProgressIndicator()
+                                            )
+                                        );
+                                      }
+
+                                      return ListView.builder(
+                                        itemCount: snapshot.data.length,
+                                        itemBuilder: (context, int){
+                                          return ListTile(
+
+                                              title: FlatButton(
+                                                  child:
+                                                  Row(
+                                                      children: [
+                                                        Expanded(
+                                                            flex: 2,
+                                                            child: GridView.count(
+                                                                crossAxisCount: 1,
+                                                                childAspectRatio: 2.9,
+                                                                padding: const EdgeInsets.all(1.0),
+                                                                mainAxisSpacing: 0,
+                                                                crossAxisSpacing: 10.0,
+                                                                physics: NeverScrollableScrollPhysics(),
+                                                                shrinkWrap: true,
+                                                                children: [
+                                                                  Align(alignment: Alignment.center, child: Text(snapshot.data[int].month, textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17))),
+                                                                  Align(alignment: Alignment.center, child: Text(snapshot.data[int].day, textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17))),
+                                                                  Align(alignment: Alignment.center, child: Text(snapshot.data[int].time.substring(0,5), textAlign: TextAlign.center, style: TextStyle(fontStyle: FontStyle.italic))),
+                                                                ]
+                                                            )
+                                                        ),
+                                                        Expanded(
+                                                            flex: 8,
+                                                            child: Column(
+                                                                children: [
+                                                                  GridView.count(
+                                                                      crossAxisCount: 3,
+                                                                      childAspectRatio: 2.5,
+                                                                      padding: const EdgeInsets.all(1.0),
+                                                                      mainAxisSpacing: 0,
+                                                                      crossAxisSpacing: 10.0,
+                                                                      physics: NeverScrollableScrollPhysics(),
+                                                                      shrinkWrap: true,
+                                                                      children: [
+                                                                        Align(alignment: Alignment.center, child: Text(snapshot.data[int].venue, textAlign: TextAlign.center)),
+                                                                        Align(alignment: Alignment.center, child: Text(snapshot.data[int].genre, textAlign: TextAlign.center)),
+
+                                                                        snapshot.data[int].under_21_flag == "0"?
+                                                                        Align(alignment: Alignment.center, child: Text("18+", textAlign: TextAlign.center))
+                                                                            :
+                                                                        Align(alignment: Alignment.center, child: Text("21+", textAlign: TextAlign.center)),
+                                                                      ]
+                                                                  ),
+                                                                  GridView.count(
+                                                                      crossAxisCount: 3,
+                                                                      childAspectRatio: 2.5,
+                                                                      padding: const EdgeInsets.all(1.0),
+                                                                      mainAxisSpacing: 0,
+                                                                      crossAxisSpacing: 10.0,
+                                                                      physics: NeverScrollableScrollPhysics(),
+                                                                      shrinkWrap: true,
+                                                                      children: [
+                                                                        Align(alignment: Alignment.center, child: Text(snapshot.data[int].artist_1, textAlign: TextAlign.center)),
+                                                                        Align(alignment: Alignment.center, child: Text(snapshot.data[int].artist_2, textAlign: TextAlign.center)),
+                                                                        Align(alignment: Alignment.center, child: Text(snapshot.data[int].artist_3, textAlign: TextAlign.center)),
+                                                                      ]
+                                                                  )
+                                                                ]))
+                                                      ]
+                                                  ),
+                                                  onPressed: () {
+                                                    mapRecenter(snapshot.data[int].venue_address, snapshot.data[int].venue_zip_code);
+                                                  }
                                               ),
-                                              onPressed: () {
-                                                mapRecenter(snapshot.data[int].venue_address, snapshot.data[int].venue_zip_code);
-                                              }
-                                          ),
 
-                                          trailing:
-                                          //adds button for declining rsvp (fans) or editing/canceling event (venues)
+                                              trailing:
+                                              //adds button for declining rsvp (fans) or editing/canceling event (venues)
                                               GestureDetector(
                                                 child: Icon(Icons.event_busy_outlined, color: Colors.red[900]),
 
@@ -904,7 +953,7 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
                                                         context,
                                                         EventHandling.routeName,
                                                         arguments: EventInputs(args.user_id, args.user_type, args.user_city, args.user_city, true, snapshot.data[int].show_id, snapshot.data[int].artist_1, snapshot.data[int].artist_2,
-                                                        snapshot.data[int].artist_3, snapshot.data[int].year, snapshot.data[int].month_no, snapshot.data[int].day, snapshot.data[int].time, snapshot.data[int].max_attend, snapshot.data[int].genre));
+                                                            snapshot.data[int].artist_3, snapshot.data[int].year, snapshot.data[int].month_no, snapshot.data[int].day, snapshot.data[int].time, snapshot.data[int].max_attend, snapshot.data[int].genre));
                                                   }
 
                                                   //updates ticket/scanner button visibility variable based on time to expand QR code
@@ -924,86 +973,90 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
 
                                                   if((args.user_type == "fan") & (now.month == snapshot.data[int].month_no) & (now.day == snapshot.data[int].day) & ((now.hour-13) >= snapshot.data[int].time)){
 
-                                                        switch(ticket_visibility){
-                                                          case false: {ticket_visibility = true;}
-                                                          break;
-                                                          case true: {ticket_visibility = false;}
-                                                          break;
-                                                        }
+                                                    switch(ticket_visibility){
+                                                      case false: {ticket_visibility = true;}
+                                                      break;
+                                                      case true: {ticket_visibility = false;}
+                                                      break;
+                                                    }
 
                                                   }
 
                                                 },
 
-                                          ),
+                                              ),
 
-                                      //QR code area. TO DO: add a scanner here for venues instead
-                                      subtitle: args.user_type == "fan" ?
+                                              //QR code area. TO DO: add a scanner here for venues instead
+                                              subtitle: args.user_type == "fan" ?
 
-                                      Visibility(
-                                          visible: ticket_visibility,
-                                          child: QrImage(
-                                            data: args.user_id + "#" + snapshot.data[int].show_id + "#" + snapshot.data[int].ticket_color,
-                                            version: QrVersions.auto,
-                                            size: 200.0,
-                                          ),
-                                      )
+                                              Visibility(
+                                                visible: ticket_visibility,
+                                                child: QrImage(
+                                                  data: args.user_id + "#" + snapshot.data[int].show_id + "#" + snapshot.data[int].ticket_color,
+                                                  version: QrVersions.auto,
+                                                  size: 200.0,
+                                                ),
+                                              )
 
-                                      :
+                                                  :
 
-                                      Visibility(
-                                        visible: scanner_button_visibility,
-                                        child: FlatButton(
-                                          padding: EdgeInsets.all(15),
-                                          onPressed: (){
-                                            Navigator.of(context).push(MaterialPageRoute(builder: (context)=> ScanQR()));
-                                          },
-                                          //TO DO: update colors
-                                          child: Text("Scan QR Code",style: TextStyle(color: Colors.indigo[900]),),
-                                          shape: RoundedRectangleBorder(
-                                            borderRadius: BorderRadius.circular(20),
-                                            side: BorderSide(color: Colors.indigo[900]),
-                                          ),
-                                        ),
-                                      )
+                                              Visibility(
+                                                visible: scanner_button_visibility,
+                                                child: FlatButton(
+                                                  padding: EdgeInsets.all(15),
+                                                  onPressed: (){
+                                                    Navigator.of(context).push(MaterialPageRoute(builder: (context)=> ScanQR()));
+                                                  },
+                                                  //TO DO: update colors
+                                                  child: Text("Scan QR Code",style: TextStyle(color: Colors.indigo[900]),),
+                                                  shape: RoundedRectangleBorder(
+                                                    borderRadius: BorderRadius.circular(20),
+                                                    side: BorderSide(color: Colors.indigo[900]),
+                                                  ),
+                                                ),
+                                              )
 
+                                          );
+                                        },
                                       );
                                     },
-                                  );
-                                },
-                              ))),
+                                  ))),
 
-                        ]))
-                  ]
+                            ]))
+                      ]
 
-              ), // This trailing comma makes auto-formatting nicer for build methods.
+                  ), // This trailing comma makes auto-formatting nicer for build methods.
 
-                floatingActionButton: Visibility(
-                  visible: fab_visibility,
-                  child: FloatingActionButton.extended(
-                    onPressed: () {
+                  floatingActionButton: Visibility(
+                    visible: fab_visibility,
+                    child: FloatingActionButton.extended(
+                      onPressed: () {
 
-                      //passes only empty strings to event handling page
-                      Navigator.pushNamed(
-                        context,
-                        EventHandling.routeName,
-                        arguments: EventInputs(args.user_id, args.user_type, args.user_city, args.user_state, false, "", "", "", "", "", "", "", "", "", ""));
+                        //passes only empty strings to event handling page
+                        Navigator.pushNamed(
+                            context,
+                            EventHandling.routeName,
+                            arguments: EventInputs(args.user_id, args.user_type, args.user_city, args.user_state, false, "", "", "", "", "", "", "", "", "", ""));
 
-                    },
-                    icon: Icon(Icons.event),
-                    label: Text("Create"),
-                    backgroundColor: Colors.green,
-                    elevation: 20.0,
+                      },
+                      icon: Icon(Icons.event),
+                      label: Text("Create"),
+                      backgroundColor: Colors.green,
+                      elevation: 20.0,
                     ),
-                )
-        ));
+                  )
+              ));
+        }
+
+  @override
+  // TODO: implement wantKeepAlive
+  bool get wantKeepAlive => throw UnimplementedError();
 
       }
 
   @override
   // TODO: implement wantKeepAlive
   bool get wantKeepAlive => true;
-    }
 
 class LocalShow {
   final String show_id;

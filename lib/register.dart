@@ -140,7 +140,7 @@ class _MyHomePageState extends State<MyRegisterPage> {
       Navigator.pushNamed(
           context,
           MyApp.routeName,
-          arguments: LoginOutput(jsonData[0].toString(), jsonData[1].toString(), jsonData[2].toString(), jsonData[3].toString()));
+          arguments: LoginOutput(jsonData[0].toString(), jsonData[1].toString(), jsonData[2].toString(), jsonData[3].toString(), jsonData[4].toString(), jsonData[5].toString()));
     }
 
   }
@@ -192,7 +192,7 @@ class _MyHomePageState extends State<MyRegisterPage> {
       Navigator.pushNamed(
           context,
           MyApp.routeName,
-          arguments: LoginOutput(jsonData[0].toString(), jsonData[1].toString(), jsonData[2].toString(), jsonData[3].toString()));
+          arguments: LoginOutput(jsonData[0].toString(), jsonData[1].toString(), jsonData[2].toString(), jsonData[3].toString(), jsonData[4].toString(), jsonData[5].toString()));
     }
 
   }
@@ -242,10 +242,14 @@ class _MyHomePageState extends State<MyRegisterPage> {
           Navigator.pushNamed(
               context,
               ArtistMain.routeName,
-              arguments: LoginOutput(jsonData[0].toString(), jsonData[1].toString(), jsonData[2].toString(), jsonData[3].toString()));
+              arguments: LoginOutput(jsonData[0].toString(), jsonData[1].toString(), jsonData[2].toString(), jsonData[3].toString(), jsonData[4].toString(), jsonData[5].toString()));
     }
 
   }
+
+  //******************************************************************************************************************
+  //Start of the app UI build
+  //******************************************************************************************************************
 
   @override
   Widget build(BuildContext context) {

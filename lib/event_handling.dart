@@ -254,7 +254,7 @@ class _MyEventFormState extends State<EventHandlingPage> {
       Navigator.pushNamed(
           context,
           MyApp.routeName,
-          arguments: LoginOutput(event_args.user_id, event_args.user_type, event_args.user_city, event_args.user_state));
+          arguments: LoginOutput(event_args.user_id, event_args.user_type, event_args.user_city, event_args.user_state, "1", "0"));
     }
 
   }
@@ -310,7 +310,7 @@ class _MyEventFormState extends State<EventHandlingPage> {
       Navigator.pushNamed(
           context,
           MyApp.routeName,
-          arguments: LoginOutput(event_args.user_id, event_args.user_type, event_args.user_city, event_args.user_state));
+          arguments: LoginOutput(event_args.user_id, event_args.user_type, event_args.user_city, event_args.user_state, "1", "0"));
     }
 
   }
@@ -357,7 +357,7 @@ class _MyEventFormState extends State<EventHandlingPage> {
       Navigator.pushNamed(
           context,
           MyApp.routeName,
-          arguments: LoginOutput(event_args.user_id, event_args.user_type, event_args.user_city, event_args.user_state));
+          arguments: LoginOutput(event_args.user_id, event_args.user_type, event_args.user_city, event_args.user_state, "1", "0"));
     }
 
   }
@@ -408,6 +408,10 @@ class _MyEventFormState extends State<EventHandlingPage> {
   void getArtists() async {
     artists = await getArtistList();
   }
+
+  //******************************************************************************************************************
+  //Start of the app UI build
+  //******************************************************************************************************************
 
   @override
   Widget build(BuildContext context) {

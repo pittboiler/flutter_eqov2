@@ -568,7 +568,7 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
                         ],
                       ),
                       title: Text('Flutter EQO'),
-                      actions: [
+                      actions: args.user_type != "fan" ? null : [
                         IconButton(
                           icon: Icon(
                             Icons.settings,

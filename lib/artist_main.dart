@@ -129,12 +129,14 @@ class _MyArtistState extends State<ArtistMainPage> {
     }
     else{
       setState(() {
-        artist_name = jsonData["artist_name"];
-        artist_genre = jsonData["artist_genre"];
-        song_1_name = jsonData["song_1_name"];
-        song_2_name = jsonData["song_2_name"];
-        song_3_name = jsonData["song_3_name"];
+        artist_name = jsonData["artist_name"].toString();
+        artist_genre = jsonData["artist_genre"].toString();
+        song_1_name = jsonData["song_1_name"].toString();
+        song_2_name = jsonData["song_2_name"].toString();
+        song_3_name = jsonData["song_3_name"].toString();
         artist_location = args.user_city + ", " + args.user_state;
+
+        print("song 1" + song_1_name + "song 2" + song_2_name + "song 3" + song_3_name);
 
         var upcoming_shows_string = jsonData["future_shows"].toString().split(":");
         upcoming_shows = int.parse(upcoming_shows_string[1].substring(0,upcoming_shows_string[1].length - 1));
@@ -234,16 +236,33 @@ class _MyArtistState extends State<ArtistMainPage> {
       //upload song to firebase
       File file = File(result.files.single.path);
 
+      print("file name" + file.toString());
+
       String url = "";
 
-      StorageReference storageReference;
-      final StorageUploadTask uploadTask = storageReference.putFile(file);
-      final StorageTaskSnapshot downloadUrl = (await uploadTask.onComplete);
-      url = (await downloadUrl.ref.getDownloadURL());
+      FirebaseStorage _storage = FirebaseStorage.instance;
 
+      if(file != null) {
+
+        StorageReference ref = FirebaseStorage().ref().child(SongOneController.text + "_" + position + ".mp3");
+        StorageUploadTask uploadTask = ref.putFile(file);
+
+        var dowurl = await (await uploadTask.onComplete).ref.getDownloadURL();
+
+        url = dowurl.toString();
+
+        print("firebase URL" + url);
+
+        //StorageReference storageReference = storage.ref();
+        //final StorageUploadTask uploadTask = storageReference.putFile(file);
+        //final StorageTaskSnapshot downloadUrl = (await uploadTask.onComplete);
+        //url = (await downloadUrl.ref.getDownloadURL());
+      }
       //if url is received, update database info with link, song name
 
       if(url != "") {
+
+        print("is this working?");
 
         Map<String, String> input_song_download_url = {
           "user_id": args.user_id,

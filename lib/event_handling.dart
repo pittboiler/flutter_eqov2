@@ -89,7 +89,7 @@ class _MyEventFormState extends State<EventHandlingPage> {
 
   //FUNCTIONS HAVE NOT YET BEEN TESTED
 
-  //function for handling audio medley creation
+  //function for handling audio medley creation; called in the create event, update event functions
 
   Future<List<String>> MedleyCreation(artist_1, artist_2, artist_3, show_id)
 
@@ -307,6 +307,9 @@ class _MyEventFormState extends State<EventHandlingPage> {
 
     }
     else{
+
+      MedleyCreation(input_artist_1, input_artist_2, input_artist_3, event_args.show_id);
+
       Navigator.pushNamed(
           context,
           MyApp.routeName,

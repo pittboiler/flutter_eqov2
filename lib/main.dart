@@ -8,6 +8,7 @@ import 'package:flutter_eqo_v2/event_handling.dart';
 import 'package:flutter_eqo_v2/login.dart';
 import 'package:flutter_eqo_v2/payment_screen.dart';
 import 'package:flutter_eqo_v2/scan_QR.dart';
+import 'package:flutter_eqo_v2/venue_settings.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:http/http.dart' as http;
 import 'package:async/async.dart';
@@ -40,6 +41,8 @@ class MyApp extends StatelessWidget {
       home: MyHomePage(args: args),
       routes: {
         EventHandling.routeName: (context) => EventHandling(),
+        VenueSettings.routeName: (context) => VenueSettings(),
+        Payment.routeName: (context) => Payment(),
         ScanQR.routeName: (context) => ScanQR(),
       },
     );
@@ -177,6 +180,8 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
       "user_id" : args.user_id,
     };
 
+    print("subscription check" + args.subscription_flag + "," + args.final_month_flag);
+
     //get data from database
 
     var url_login = 'https://eqomusic.com/mobile/venue_lookup.php';
@@ -221,7 +226,7 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
 
         //note: this is only the last few shows, not a complete history. see php file for more details
         var past_shows_string = jsonData["trailing_shows"].toString().split(":");
-        past_shows = double.parse(past_shows_string[1].substring(0,past_shows_string[1].length - 1));
+        past_shows = double.parse(past_shows_string[0]);
 
         if(past_shows > 0.0){
           avg_past_rsvps = total_p_rsvps / past_shows;
@@ -385,7 +390,9 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
                 i["venue_zip_code"],
                 i["ticket_color"],
                 i["ticket_icon"],
-                i["under_21_flag"]);
+                i["under_21_flag"],
+                i["bid_amount"],
+                i["payment_status"]);
             myShows.add(myShow);
 
             //get latitude/longitude, create map marker
@@ -473,8 +480,75 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
 
       }
 
-      //function for fan pressing attend button
-      void attendButton(user_id_input, show_id_input) async {
+      //functions for fan pressing attend button. Displays dialog for submitting bid
+
+      TextEditingController bidInputController = TextEditingController();
+
+      void OpenBidDialog(user_id_input, show_id_input) async{
+
+        return showDialog(
+            context: context,
+            builder: (context){
+              return AlertDialog(
+                title: Text('Show Ticket Bid'),
+                content:
+                Column(
+                children: [
+                  Text("You will only be charged if the venue accepts your bid"),
+                  TextField(
+                    onChanged: (value) { },
+                    controller: bidInputController,
+                    decoration: InputDecoration(hintText: "Bid for a ticket"),
+                  )]
+                ),
+              actions: [
+                TextButton(
+                  onPressed: SubmitBid(user_id_input, show_id_input, bidInputController.value),
+                  child: const Text('Submit'),
+                ),
+              ]
+              );
+            }
+        );
+
+      }
+
+      //functions for fan pressing attend button. Displays dialog for submitting bid
+
+      SubmitBid(user_id_input, show_id_input, bid_value) async {
+
+        Map<String, String> input_bid_data = {
+          "user_id": user_id_input,
+          "show_id": show_id_input,
+          "bid_value": bid_value,
+          "status": "pending"
+        };
+
+        var url_bids = 'https://eqomusic.com/mobile/bid_handling.php';
+
+        var data = await http.post(url_bids,
+            headers: {
+              'Accept': 'application/json',
+              'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            body: input_bid_data
+        );
+
+        if(data.body.contains('Error') == true){
+          print(data.body);
+          return showDialog(
+              context: context,
+              builder: (context){
+                return AlertDialog(title: Text("An error occurred, please try again"));
+              }
+          );
+
+        }
+
+      }
+
+      //old function for fan pressing attend button; instead, this will happen post-ticket approval
+      void AttendApproved(user_id_input, show_id_input) async {
 
         Map<String, String> input_data_attend = {
           "user_id": user_id_input,
@@ -505,6 +579,196 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
 
       }
 
+    //function invoked when venue declines a fan's bid; happens upon decision
+    void AttendDeclined(user_id_input, show_id_input) async {
+
+      Map<String, String> input_data_attend = {
+        "user_id": user_id_input,
+        "show_id": show_id_input,
+        "decline_button": "1"
+      };
+
+      var url_my_shows = 'https://eqomusic.com/mobile/attendance_management.php';
+
+      var data = await http.post(url_my_shows,
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/x-www-form-urlencoded'
+          },
+          body: input_data_attend
+      );
+
+      if(data.body.contains('Error') == true){
+        print(data.body);
+        return showDialog(
+            context: context,
+            builder: (context){
+              return AlertDialog(title: Text("An error occurred, please refresh and try again"));
+            }
+        );
+
+      }
+
+    }
+
+
+      //function for showing dialog with ticket bids on venue selection
+
+      void OpenBidListDialog(user_id, user_type, user_city, user_state, show_id, artist_1, artist_2, artist_3, year, month_no, day, time, max_attend, genre) async{
+
+        return showDialog(
+            context: context,
+            builder: (context){
+              return AlertDialog(
+                  title: Text('Review Ticket Bid'),
+                  content:
+                  Container(
+                      width: double.maxFinite,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text("Review and accept/decline ticket bids for this show"),
+                          Expanded(
+                            child: FutureBuilder(
+                                future: showTicketBids(show_id),
+                                builder: (BuildContext context, AsyncSnapshot snapshot){
+
+                                  if(snapshot.data == null) {
+                                    return Container(
+                                        child: Center(
+                                            child: new CircularProgressIndicator()
+                                        )
+                                    );
+                                  }
+
+                                  return ListView.builder(
+                                      itemCount: snapshot.data.length,
+                                      itemBuilder: (context, int){
+                                        return ListTile(
+
+                                            key: UniqueKey(),
+
+                                            title: FlatButton(
+                                                child:
+                                                Row(children: [snapshot.data[int].bid,
+                                                    snapshot.data[int].user_f_name,
+                                                    snapshot.data[int].user_l_name])),
+                                            trailing:
+                                                //accept / decline buttons. Will remove row
+                                                Row(children: [
+                                                  //accept
+                                                  GestureDetector(
+                                                      child: Icon(Icons.check_circle_outline, color: Colors.green[900]),
+
+                                                      onTap: (){
+
+                                                        //accept php code
+                                                        AttendApproved(snapshot.data[int].user_id, show_id);
+
+                                                        //remove list tile
+                                                        snapshot.data.removeAt(int);
+                                                        setState(() {
+                                                          snapshot = snapshot.data;
+                                                        });
+
+                                                      }
+                                                  ),
+                                                  //decline
+                                                  GestureDetector(
+                                                      child: Icon(Icons.cancel_outlined, color: Colors.red[900]),
+
+                                                      onTap: (){
+
+                                                        //decline php code
+                                                        AttendDeclined(snapshot.data[int].user_id, show_id);
+
+                                                        //remove list tile
+                                                        snapshot.data.removeAt(int);
+                                                        setState(() {
+                                                          snapshot = snapshot.data;
+                                                        });
+
+                                                      }
+                                                  ),
+                                                ]
+                                            ));
+                                      }
+                                  );
+                            })
+                      )]
+                  )),
+                  actions: [
+                    TextButton(
+                      onPressed: //navigate to edit page
+                        (){
+                        Navigator.pushNamed(
+                        context,
+                        EventHandling.routeName,
+                        arguments: EventInputs(user_id, user_type, user_city, user_state, true, show_id, artist_1, artist_2,
+                        artist_3, year, month_no, day, time, max_attend, genre));
+                        },
+                      child: const Text('Edit/Cancel Show'),
+                    )
+                  ]
+              );
+            }
+        );
+
+      }
+
+      //function for pulling ticket bids
+
+      Future<List<ShowBid>> showTicketBids(show_id_input) async {
+
+        Map<String, String> input_data_get_bids = {
+          "user_id": show_id_input,
+        };
+
+        //get data from database
+
+        var url_get_bids = 'https://eqomusic.com/mobile/bid_retrieval.php';
+
+        var data = await http.post(url_get_bids,
+            headers: {
+              'Accept': 'application/json',
+              'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            body: input_data_get_bids
+        );
+
+        print("my check" + data.body);
+
+        var jsonData = json.decode(data.body);
+
+        List<ShowBid> showBids = [];
+
+        //loop through output
+        for (var i in jsonData) {
+          ShowBid showBid = ShowBid(
+              show_id_input,
+              i["user_id"],
+              i["user_f_name"],
+              i["user_l_name"],
+              i["bid"]);
+          showBids.add(showBid);
+
+        }
+
+        if(showBids.isNotEmpty) {
+          return showBids;
+        }
+        else{
+          return showDialog(
+              context: context,
+              builder: (context) {
+                return AlertDialog(
+                    title: Text("No one has bid for this show"));
+              }
+          );
+        }
+
+      }
+
       void cancelButton(user_id_input, show_id_input) async {
 
         print("cancel test");
@@ -527,17 +791,17 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
 
       }
 
-  //function for calling an alert for unsubscribed folks
-  void SubscriptionAlert() async {
+      //function for calling an alert for unsubscribed folks
+      void SubscriptionAlert() async {
 
-      return showDialog(
-          context: context,
-          builder: (context){
-            return AlertDialog(title: Text("Subscribe to find shows to see!"));
-          }
-      );
+          return showDialog(
+              context: context,
+              builder: (context){
+                return AlertDialog(title: Text("Subscribe to find shows to see!"));
+              }
+          );
 
-    }
+        }
 
     //******************************************************************************************************************
     //Start of the app UI build
@@ -568,17 +832,35 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
                         ],
                       ),
                       title: Text('Flutter EQO'),
-                      actions: args.user_type != "fan" ? null : [
+                      actions: (args.user_type != "fan") && (args.user_type != "venue") ? null : [
                         IconButton(
                           icon: Icon(
                             Icons.settings,
                             color: Colors.white,
                           ),
                           onPressed: () {
-                            Navigator.pushNamed(
-                                context,
-                                Payment.routeName,
-                                arguments: LoginOutput(args.user_id, args.user_type, args.user_city, args.user_state, args.subscription_flag, args.final_month_flag));
+                            if(args.user_type == "fan") {
+                              //go to payment screen for fans for management
+                              Navigator.pushNamed(
+                                  context,
+                                  VenueSettings.routeName,
+                                  arguments: LoginOutput(
+                                      args.user_id, args.user_type,
+                                      args.user_city, args.user_state,
+                                      args.subscription_flag,
+                                      args.final_month_flag));
+                            }
+                            else{
+                              //go to settings for venue to adjust address/name/etc.
+                              Navigator.pushNamed(
+                                  context,
+                                  VenueSettings.routeName,
+                                  arguments: LoginOutput(
+                                      args.user_id, args.user_type,
+                                      args.user_city, args.user_state,
+                                      args.subscription_flag,
+                                      args.final_month_flag));
+                            }
                           },
                         )
                       ]
@@ -586,7 +868,7 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
                   body: TabBarView(
                       children: [(
 
-                          Column(children:[
+                          Expanded( child: Column( children:[
 
                             Container(
                                 height:250,
@@ -602,194 +884,191 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
                                     )
                                 )),
 
-                            (
+                  Expanded( child: FutureBuilder(
+                    future: getLocalShows(),
+                    builder: (BuildContext context, AsyncSnapshot snapshot){
 
-                                Expanded( child: FutureBuilder(
 
-                                  //check subscription here; add in both subscription and end subscription flag for 1 to display when subscription is active or in the last month
-                                  //note, the subscription flag is always 1 for venues/artists; for fans, it is dependent on payment
+                      if(snapshot.data == null) {
+                        if(args.subscription_flag == "1" || args.final_month_flag == "1") {
+                          return Container(
+                              child: Center(
+                                  child: new CircularProgressIndicator()
+                              )
+                          );
+                        }
+                        else {
+                          SubscriptionAlert();
+                          return Container(
+                              child: Center(
+                                  child: new CircularProgressIndicator()
+                              )
+                          );
+                        }
+                      }
 
-                                    future: getLocalShows(),
+                      return ListView.builder(
+                        itemCount: snapshot.data.length,
+                        itemBuilder: (context, int){
+                          return ListTile(
 
-                                    builder: (BuildContext context, AsyncSnapshot snapshot){
-
-                                      if(snapshot.data == null) {
-                                        if(args.subscription_flag == "1" || args.final_month_flag == "1") {
-                                          return Container(
-                                              child: Center(
-                                                  child: new CircularProgressIndicator()
-                                              )
-                                          );
-                                        }
-                                        else {
-                                          SubscriptionAlert();
-                                          return null;
-                                        }
-                                      }
-
-                                      return ListView.builder(
-                                        itemCount: args.subscription_flag == "1" || args.final_month_flag == "1" ? snapshot.data.length : null,
-                                        itemBuilder: (context, int){
-                                          return ListTile(
-                                              title: FlatButton(
-                                                  child:
-                                                  Row(
+                              title: FlatButton(
+                                  child:
+                                  Row(
+                                      children: [
+                                        Expanded(
+                                            flex: 2,
+                                            child: GridView.count(
+                                                crossAxisCount: 1,
+                                                childAspectRatio: 2.9,
+                                                padding: const EdgeInsets.all(1.0),
+                                                mainAxisSpacing: 0,
+                                                crossAxisSpacing: 10.0,
+                                                physics: NeverScrollableScrollPhysics(),
+                                                shrinkWrap: true,
+                                                children: [
+                                                  Align(alignment: Alignment.center, child: Text(snapshot.data[int].month, textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17))),
+                                                  Align(alignment: Alignment.center, child: Text(snapshot.data[int].day, textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17))),
+                                                  Align(alignment: Alignment.center, child: Text(snapshot.data[int].time.substring(0,5), textAlign: TextAlign.center, style: TextStyle(fontStyle: FontStyle.italic))),
+                                                ]
+                                            )
+                                        ),
+                                        Expanded(
+                                            flex: 8,
+                                            child: Column(
+                                                children: [
+                                                  GridView.count(
+                                                      crossAxisCount: 3,
+                                                      childAspectRatio: 2.5,
+                                                      padding: const EdgeInsets.all(1.0),
+                                                      mainAxisSpacing: 0,
+                                                      crossAxisSpacing: 10.0,
+                                                      physics: NeverScrollableScrollPhysics(),
+                                                      shrinkWrap: true,
                                                       children: [
-                                                        Expanded(
-                                                            flex: 2,
-                                                            child: GridView.count(
-                                                                crossAxisCount: 1,
-                                                                childAspectRatio: 2.9,
-                                                                padding: const EdgeInsets.all(1.0),
-                                                                mainAxisSpacing: 0,
-                                                                crossAxisSpacing: 10.0,
-                                                                physics: NeverScrollableScrollPhysics(),
-                                                                shrinkWrap: true,
-                                                                children: [
-                                                                  Align(alignment: Alignment.center, child: Text(snapshot.data[int].month, textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17))),
-                                                                  Align(alignment: Alignment.center, child: Text(snapshot.data[int].day, textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17))),
-                                                                  Align(alignment: Alignment.center, child: Text(snapshot.data[int].time.substring(0,5), textAlign: TextAlign.center, style: TextStyle(fontStyle: FontStyle.italic))),
-                                                                ]
-                                                            )
-                                                        ),
-                                                        Expanded(
-                                                            flex: 8,
-                                                            child: Column(
-                                                                children: [
-                                                                  GridView.count(
-                                                                      crossAxisCount: 3,
-                                                                      childAspectRatio: 2.5,
-                                                                      padding: const EdgeInsets.all(1.0),
-                                                                      mainAxisSpacing: 0,
-                                                                      crossAxisSpacing: 10.0,
-                                                                      physics: NeverScrollableScrollPhysics(),
-                                                                      shrinkWrap: true,
-                                                                      children: [
-                                                                        Align(alignment: Alignment.center, child: Text(snapshot.data[int].venue, textAlign: TextAlign.center)),
-                                                                        Align(alignment: Alignment.center, child: Text(snapshot.data[int].genre, textAlign: TextAlign.center)),
+                                                        Align(alignment: Alignment.center, child: Text(snapshot.data[int].venue, textAlign: TextAlign.center)),
+                                                        Align(alignment: Alignment.center, child: Text(snapshot.data[int].genre, textAlign: TextAlign.center)),
 
-                                                                        snapshot.data[int].under_21_flag == "0"?
-                                                                        Align(alignment: Alignment.center, child: Text("18+", textAlign: TextAlign.center))
-                                                                            :
-                                                                        Align(alignment: Alignment.center, child: Text("21+", textAlign: TextAlign.center)),
-                                                                      ]
-                                                                  ),
-                                                                  GridView.count(
-                                                                      crossAxisCount: 3,
-                                                                      childAspectRatio: 2.5,
-                                                                      padding: const EdgeInsets.all(1.0),
-                                                                      mainAxisSpacing: 0,
-                                                                      crossAxisSpacing: 10.0,
-                                                                      physics: NeverScrollableScrollPhysics(),
-                                                                      shrinkWrap: true,
-                                                                      children: [
-                                                                        Align(alignment: Alignment.center, child: Text(snapshot.data[int].artist_1, textAlign: TextAlign.center)),
-                                                                        Align(alignment: Alignment.center, child: Text(snapshot.data[int].artist_2, textAlign: TextAlign.center)),
-                                                                        Align(alignment: Alignment.center, child: Text(snapshot.data[int].artist_3, textAlign: TextAlign.center)),
-                                                                      ]
-                                                                  )
-                                                                ]))
+                                                        snapshot.data[int].under_21_flag == "0"?
+                                                        Align(alignment: Alignment.center, child: Text("18+", textAlign: TextAlign.center))
+                                                            :
+                                                        Align(alignment: Alignment.center, child: Text("21+", textAlign: TextAlign.center)),
                                                       ]
                                                   ),
-                                                  onPressed: () {
-                                                    mapRecenter(snapshot.data[int].venue_address, snapshot.data[int].venue_zip_code);
+                                                  GridView.count(
+                                                      crossAxisCount: 3,
+                                                      childAspectRatio: 2.5,
+                                                      padding: const EdgeInsets.all(1.0),
+                                                      mainAxisSpacing: 0,
+                                                      crossAxisSpacing: 10.0,
+                                                      physics: NeverScrollableScrollPhysics(),
+                                                      shrinkWrap: true,
+                                                      children: [
+                                                        Align(alignment: Alignment.center, child: Text(snapshot.data[int].artist_1, textAlign: TextAlign.center)),
+                                                        Align(alignment: Alignment.center, child: Text(snapshot.data[int].artist_2, textAlign: TextAlign.center)),
+                                                        Align(alignment: Alignment.center, child: Text(snapshot.data[int].artist_3, textAlign: TextAlign.center)),
+                                                      ]
+                                                  )
+                                                ]))
+                                      ]
+                                  ),
+                                  onPressed: () {
+                                    mapRecenter(snapshot.data[int].venue_address, snapshot.data[int].venue_zip_code);
+                                  }
+                              ),
+
+                              trailing:
+                                  Wrap(
+                                      spacing:12,
+                                      children: [
+                                          snapshot.data[int].audio_link == "" ?
+                                          SizedBox.shrink()
+                                          :
+                                          GestureDetector(child: Icon(Icons.play_circle_fill, color: snapshot.data[int].row_play_pause == 0 ? Colors.green: Colors.red),
+                                              onTap: (){
+
+                                                  //logic: if music is not being played, turn button red and play audio
+                                                  //logic: if music is not being played, then see below:
+                                                  //sub-logic: if button is green -> turn all buttons green, play new song, turn button red, play_pause = 1
+
+                                                  if(play_pause_flag == 0){
+
+                                                      //case where music is not being played (start playing audio)
+
+                                                      audioPlayer.play(snapshot.data[int].audio_link);
+
+                                                      setState(() {
+                                                      snapshot.data[int].row_play_pause = 1;
+                                                      play_pause_flag = 1;
+                                                      });
                                                   }
-                                              ),
 
-                                              trailing:
-                                              Row(
-                                                  children: [
+                                                  else{
 
-                                                    //adds the play/pause button referencing the url from the show database pull
+                                                      //case where music is being played from the same row in which the button is pressed (simple pause)
 
-                                                    snapshot.data[int].audio_link == ""?
-                                                    null
-                                                        :
-                                                    GestureDetector(child: Icon(Icons.play_circle_fill, color: snapshot.data[int].row_play_pause == 0 ? Colors.green: Colors.red),
-                                                        onTap: (){
+                                                      if(snapshot.data[int].row_play_pause == 1){
 
-                                                          //logic: if music is not being played, turn button red and play audio
-                                                          //logic: if music is not being played, then see below:
-                                                          //sub-logic: if button is green -> turn all buttons green, play new song, turn button red, play_pause = 1
+                                                      audioPlayer.pause();
 
-                                                          if(play_pause_flag == 0){
+                                                      setState(() {
+                                                      snapshot.data[int].row_play_pause = 0;
+                                                      play_pause_flag = 0;
+                                                      });
 
-                                                            //case where music is not being played (start playing audio)
+                                                      }
 
-                                                            audioPlayer.play(snapshot.data[int].audio_link);
+                                                      else{
 
-                                                            setState(() {
-                                                              snapshot.data[int].row_play_pause = 1;
-                                                              play_pause_flag = 1;
-                                                            });
-                                                          }
+                                                          //case where music is being played from a different row (need to reset all buttons, pause audio stream, then play new music
 
-                                                          else{
+                                                          audioPlayer.pause();
+                                                          audioPlayer.play(snapshot.data[int].audio_link);
 
-                                                            //case where music is being played from the same row in which the button is pressed (simple pause)
-
-                                                            if(snapshot.data[int].row_play_pause == 1){
-
-                                                              audioPlayer.pause();
-
-                                                              setState(() {
-                                                                snapshot.data[int].row_play_pause = 0;
-                                                                play_pause_flag = 0;
-                                                              });
-
-                                                            }
-
-                                                            else{
-
-                                                              //case where music is being played from a different row (need to reset all buttons, pause audio stream, then play new music
-
-                                                              audioPlayer.pause();
-                                                              audioPlayer.play(snapshot.data[int].audio_link);
-
-                                                              setState(() {
-
-                                                                for(var i = 0; i<=int; i++){
-                                                                  snapshot.data[i].row_play_pause = 0;
-                                                                }
-
-                                                                snapshot.data[int].row_play_pause = 1;
-                                                                play_pause_flag = 1;
-
-                                                              });
-
-                                                            }
-                                                          }
-                                                        }
-                                                    ),
-
-                                                    //keeps attendance buttons for fans only
-
-                                                    args.user_type != "fan"?
-                                                    null
-                                                        :
-                                                    snapshot.data[int].attending_flag == 1?
-                                                    Icon(Icons.check_circle_outline, color: Colors.green)
-                                                        : GestureDetector(child: Icon(Icons.control_point_rounded, color: Colors.orange),
-
-                                                        onTap: (){
-                                                          my_show_map_update_counter = 0;
-                                                          String user_id_input = args.user_id;
-                                                          String show_id_input = snapshot.data[int].show_id;
-                                                          attendButton(user_id_input, show_id_input);
                                                           setState(() {
-                                                            Icon(Icons.check_circle_outline, color: Colors.green);
-                                                          });
-                                                        }
-                                                    )
-                                                  ])
-                                          );
-                                        },
-                                      );
-                                    }
-                                )
-                                )),
 
-                          ])),
+                                                              for(var i = 0; i<=int; i++){
+                                                              snapshot.data[i].row_play_pause = 0;
+                                                          }
+
+                                                          snapshot.data[int].row_play_pause = 1;
+                                                          play_pause_flag = 1;
+
+                                                          });
+
+                                                      }
+                                                  }
+                                          }),
+                                          //keeps attendance buttons for fans only
+                                          args.user_type != "fan"?
+                                          SizedBox.shrink()
+                                          :
+                                          snapshot.data[int].attending_flag == 1?
+                                          Icon(Icons.check_circle_outline, color: Colors.green)
+                                          : GestureDetector(child: Icon(Icons.control_point_rounded, color: Colors.orange),
+
+                                                onTap: (){
+                                                my_show_map_update_counter = 0;
+                                                String user_id_input = args.user_id;
+                                                String show_id_input = snapshot.data[int].show_id;
+                                                OpenBidDialog(user_id_input, show_id_input);
+                                                setState(() {
+                                                  Icon(Icons.check_circle_outline, color: Colors.green);
+                                                });
+                                                }
+                                          )
+                                      ]
+                                  )
+
+                          );
+                        },
+                      );
+                    },
+                  )),
+
+
+
+              ]))),
 
                         (
 
@@ -930,16 +1209,32 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
                                               ),
 
                                               trailing:
-                                              //adds button for declining rsvp (fans) or editing/canceling event (venues)
+                                              //adds button forpaying/declining RSVP (fans) or reviewing bids/editing/canceling event (venues)
                                               GestureDetector(
-                                                child: Icon(Icons.event_busy_outlined, color: Colors.red[900]),
+
+                                                //need to adjust based on status. Paid (2) -> green, payment needed (1) -> yellow, pending (0) -> grey
+                                                //only allow click if yellow
+                                                child: args.user_type == "venue" ? Text ("Review Bids") :
+
+                                                    snapshot.data[int].payment_status == 0 ? Icon(Icons.event_outlined, color: Colors.grey[450]) :
+
+                                                        snapshot.data[int].payment_status == 1 ? Icon(Icons.event_outlined, color: Colors.yellow[800]) :
+
+                                                            Icon(Icons.event_outlined, color: Colors.green[900]),
+
+                                                  //alternative for reviewing bids for venues
+                                                //Icon(Icons.attach_money_outlined, color: Colors.green[900]),
 
                                                 onTap: (){
 
                                                   my_show_map_update_counter = 0;
 
-                                                  if(args.user_type == "fan"){
-                                                    cancelButton(args.user_id, snapshot.data[int].show_id);
+                                                  if(args.user_type == "fan" && snapshot.data[int].payment_status == "1"){
+
+                                                    //launch payment dialog info. Pre-load bid amounts so it can feed into Stripe directly
+                                                    //show fee breakdown: $x for bid, stripe fee, EQO fee (max? %? TBD)
+                                                    //make sure to send an email receipt and that the future build is redone so that the icon becomes green
+                                                    //PaymentButton(args.user_id, snapshot.data[int].show_id);
 
                                                     setState(() {
                                                       myShowMarkers.removeWhere((Marker marker) => marker.markerId.value == snapshot.data[int].show_id);
@@ -948,12 +1243,11 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
                                                   }
 
                                                   else{
-                                                    //passes info from row to navigator
-                                                    Navigator.pushNamed(
-                                                        context,
-                                                        EventHandling.routeName,
-                                                        arguments: EventInputs(args.user_id, args.user_type, args.user_city, args.user_city, true, snapshot.data[int].show_id, snapshot.data[int].artist_1, snapshot.data[int].artist_2,
-                                                            snapshot.data[int].artist_3, snapshot.data[int].year, snapshot.data[int].month_no, snapshot.data[int].day, snapshot.data[int].time, snapshot.data[int].max_attend, snapshot.data[int].genre));
+                                                    //button for opening dialog w/ ticket info & edit/cancel button, has to pass info from row to navigator
+
+                                                    OpenBidListDialog(args.user_id, args.user_type, args.user_city, args.user_city, snapshot.data[int].show_id, snapshot.data[int].artist_1, snapshot.data[int].artist_2,
+                                                        snapshot.data[int].artist_3, snapshot.data[int].year, snapshot.data[int].month_no, snapshot.data[int].day, snapshot.data[int].time, snapshot.data[int].max_attend, snapshot.data[int].genre);
+
                                                   }
 
                                                   //updates ticket/scanner button visibility variable based on time to expand QR code
@@ -1050,7 +1344,7 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
 
   @override
   // TODO: implement wantKeepAlive
-  bool get wantKeepAlive => throw UnimplementedError();
+  bool get wantKeepAlive => true; //throw UnimplementedError();
 
       }
 
@@ -1100,9 +1394,22 @@ class MyShow {
   final String ticket_color;
   final String ticket_icon;
   final String under_21_flag; //for whatever reason, having this as int throws error; check later, handling as string for now
+  final String bid_amount;
+  final String payment_status;
 
   MyShow(this.show_id, this.venue, this.genre, this.time, this.year,
       this.month, this.month_no, this.day, this.artist_1, this.artist_2, this.artist_3,
-      this.max_attend, this.venue_address, this.venue_zip_code, this.ticket_color, this.ticket_icon, this.under_21_flag);
+      this.max_attend, this.venue_address, this.venue_zip_code, this.ticket_color, this.ticket_icon, this.under_21_flag, this.bid_amount, this.payment_status);
+
+}
+
+class ShowBid {
+  final String show_id;
+  final String user_id;
+  final String user_f_name;
+  final String user_l_name;
+  final String ticket_bid;
+
+  ShowBid(this.show_id, this.user_id, this.user_f_name, this.user_l_name, this.ticket_bid);
 
 }

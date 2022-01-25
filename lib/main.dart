@@ -18,6 +18,9 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:audioplayers/audio_cache.dart';
 import 'package:audioplayers/audioplayers.dart';
+import 'package:stripe_payment/stripe_payment.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 
 void main() {
   runApp(MyApp());
@@ -68,6 +71,13 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
 
   _MyHomePageState(LoginOutput args) {
     this.args = args;
+  }
+
+  @override
+  void initState() {
+    StripePayment.setOptions(StripeOptions(
+        publishableKey: "pk_test_51Ip1nEBwbtoLyuGPq2r3m3roNooFxmbUCK6YKT3GetLq3w28ATrVlfMeOH8GIxtfz4JACK6o909Emyi20hqNWSYL007wAKvqRG"));
+    super.initState();
   }
 
   //sets up audio player
@@ -524,7 +534,7 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
           "status": "pending"
         };
 
-        var url_bids = 'https://eqomusic.com/mobile/bid_handling.php';
+        var url_bids = 'https://eqomusic.com/mobile/bid_submit.php';
 
         var data = await http.post(url_bids,
             headers: {
@@ -547,7 +557,7 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
 
       }
 
-      //old function for fan pressing attend button; instead, this will happen post-ticket approval
+      //venue accepts bid for ticket, updates payment status for person that payment is needed
       void AttendApproved(user_id_input, show_id_input) async {
 
         Map<String, String> input_data_attend = {
@@ -556,7 +566,7 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
           "attend_button": "1"
         };
 
-        var url_my_shows = 'https://eqomusic.com/mobile/attendance_management.php';
+        var url_my_shows = 'https://eqomusic.com/mobile/bid_handling.php';
 
         var data = await http.post(url_my_shows,
             headers: {
@@ -588,7 +598,7 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
         "decline_button": "1"
       };
 
-      var url_my_shows = 'https://eqomusic.com/mobile/attendance_management.php';
+      var url_my_shows = 'https://eqomusic.com/mobile/bid_handling.php';
 
       var data = await http.post(url_my_shows,
           headers: {
@@ -610,7 +620,6 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
       }
 
     }
-
 
       //function for showing dialog with ticket bids on venue selection
 
@@ -662,7 +671,7 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
 
                                                       onTap: (){
 
-                                                        //accept php code
+                                                        //accept bid approval
                                                         AttendApproved(snapshot.data[int].user_id, show_id);
 
                                                         //remove list tile
@@ -679,7 +688,7 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
 
                                                       onTap: (){
 
-                                                        //decline php code
+                                                        //decline bid php code
                                                         AttendDeclined(snapshot.data[int].user_id, show_id);
 
                                                         //remove list tile
@@ -721,7 +730,7 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
       Future<List<ShowBid>> showTicketBids(show_id_input) async {
 
         Map<String, String> input_data_get_bids = {
-          "user_id": show_id_input,
+          "show_id": show_id_input,
         };
 
         //get data from database
@@ -791,17 +800,106 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
 
       }
 
-      //function for calling an alert for unsubscribed folks
-      void SubscriptionAlert() async {
+      //Stripe payment functions
 
+      final HttpsCallable INTENT = CloudFunctions.instance
+          .getHttpsCallable(functionName: 'createPaymentIntent');
+
+      //opens payment request form
+      startPaymentProcess(bid) {
+        StripePayment.paymentRequestWithCardForm(CardFormPaymentRequest())
+            .then((paymentMethod) {
+          double amount=bid*100.0; // multiplying by 100 to change $ to cents
+          INTENT.call(<String, dynamic>{'amount': amount,'currency':'usd'}).then((response) {
+            confirmDialog(response.data["client_secret"],paymentMethod, bid); //function for confirmation for payment
+          });
+        });
+      }
+
+      //confirm payment view
+      confirmDialog(String clientSecret,PaymentMethod paymentMethod, double bid) {
+        var confirm = AlertDialog(
+          title: Text("Confirm Payment"),
+          content: Container(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Text(
+                  "Make Payment",
+                  // style: TextStyle(fontSize: 25),
+                ),
+                Text("Charge amount:\$100")
+              ],
+            ),
+          ),
+          actions: <Widget>[
+            new RaisedButton(
+              child: new Text('CANCEL'),
+              onPressed: () {
+                Navigator.of(context).pop();
+                final snackBar = SnackBar(content: Text('Payment Cancelled'),);
+                Scaffold.of(context).showSnackBar(snackBar);
+              },
+            ),
+            new RaisedButton(
+              child: new Text('Confirm'),
+              onPressed: () {
+                Navigator.of(context).pop();
+                confirmPayment(clientSecret, paymentMethod, bid); // function to confirm Payment
+              },
+            ),
+          ],
+        );
+        showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (BuildContext context) {
+              return confirm;
+            });
+      }
+
+      //function to confirm payment
+      confirmPayment(String sec, PaymentMethod paymentMethod, double bid) {
+        StripePayment.confirmPaymentIntent(
+          PaymentIntent(clientSecret: sec, paymentMethodId: paymentMethod.id),
+        ).then((val) {
+          updatePaymentStatus(bid); //confirm payment status function
+          final snackBar = SnackBar(content: Text('Payment Successful'),);
+          Scaffold.of(context).showSnackBar(snackBar);
+        });
+      }
+
+      //function to update payment status, send email
+      void updatePaymentStatus(bid) async {
+
+        Map<String, String> input_data_payment = {
+          "user_id": args.user_id,
+          "bid_amount": bid,
+        };
+
+        var url_payment_update = 'https://eqomusic.com/mobile/payment_status_update.php';
+
+        var data = await http.post(url_payment_update,
+            headers: {
+              'Accept': 'application/json',
+              'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            body: input_data_payment
+        );
+
+        if(data.body.contains('Error') == true){
+          print(data.body);
           return showDialog(
               context: context,
               builder: (context){
-                return AlertDialog(title: Text("Subscribe to find shows to see!"));
+                return AlertDialog(title: Text("There was an issue generating the receipt"));
               }
           );
 
         }
+
+      }
 
     //******************************************************************************************************************
     //Start of the app UI build
@@ -890,22 +988,12 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
 
 
                       if(snapshot.data == null) {
-                        if(args.subscription_flag == "1" || args.final_month_flag == "1") {
                           return Container(
                               child: Center(
                                   child: new CircularProgressIndicator()
                               )
                           );
                         }
-                        else {
-                          SubscriptionAlert();
-                          return Container(
-                              child: Center(
-                                  child: new CircularProgressIndicator()
-                              )
-                          );
-                        }
-                      }
 
                       return ListView.builder(
                         itemCount: snapshot.data.length,
@@ -1209,7 +1297,7 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
                                               ),
 
                                               trailing:
-                                              //adds button forpaying/declining RSVP (fans) or reviewing bids/editing/canceling event (venues)
+                                              //adds button for paying/declining RSVP (fans) or reviewing bids/editing/canceling event (venues)
                                               GestureDetector(
 
                                                 //need to adjust based on status. Paid (2) -> green, payment needed (1) -> yellow, pending (0) -> grey
@@ -1234,15 +1322,13 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
                                                     //launch payment dialog info. Pre-load bid amounts so it can feed into Stripe directly
                                                     //show fee breakdown: $x for bid, stripe fee, EQO fee (max? %? TBD)
                                                     //make sure to send an email receipt and that the future build is redone so that the icon becomes green
-                                                    //PaymentButton(args.user_id, snapshot.data[int].show_id);
 
-                                                    setState(() {
-                                                      myShowMarkers.removeWhere((Marker marker) => marker.markerId.value == snapshot.data[int].show_id);
-                                                    });
+                                                    //note: this asks for card input, confirms amount, then submits payment
+                                                    startPaymentProcess(snapshot.data[int].bid_amount.todouble());
 
                                                   }
 
-                                                  else{
+                                                  else if(args.user_type == "venue"){
                                                     //button for opening dialog w/ ticket info & edit/cancel button, has to pass info from row to navigator
 
                                                     OpenBidListDialog(args.user_id, args.user_type, args.user_city, args.user_city, snapshot.data[int].show_id, snapshot.data[int].artist_1, snapshot.data[int].artist_2,
@@ -1280,7 +1366,7 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
 
                                               ),
 
-                                              //QR code area. TO DO: add a scanner here for venues instead
+                                              //QR code area
                                               subtitle: args.user_type == "fan" ?
 
                                               Visibility(
@@ -1319,7 +1405,7 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
                             ]))
                       ]
 
-                  ), // This trailing comma makes auto-formatting nicer for build methods.
+                  ),
 
                   floatingActionButton: Visibility(
                     visible: fab_visibility,

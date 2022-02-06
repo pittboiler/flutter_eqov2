@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:core';
+import 'dart:math';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -506,9 +507,31 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
                 children: [
                   Text("You will only be charged if the venue accepts your bid"),
                   TextField(
-                    onChanged: (value) { },
+                    //user inputs bid here
+                    onChanged: (value) { setState(() {
+                      bidInputController.text = bidInputController.text;
+                    }); },
                     controller: bidInputController,
                     decoration: InputDecoration(hintText: "Bid for a ticket"),
+                  ),
+                  Text(
+                    //card processing fee calculated here, ensure this matches php code
+                    //calculated based on Stripe's stated pricing
+                      (double.parse(bidInputController.text)*0.029+0.30).toString() + "card processing fee"
+                  ),
+                  Text(
+                    //EQO fee calculated here; ensure this matches php code
+                    //50% up to $5; 25% on $5-10, 12.5% on $10-20, 10% on $20-40, 5% beyond
+
+                      (min(double.parse(bidInputController.text),5)*0.5
+                      +min(max(0,double.parse(bidInputController.text)-5),5)*0.25
+                      +min(max(0,double.parse(bidInputController.text)-10),10)*0.125
+                      +min(max(0,double.parse(bidInputController.text)-20),20)*0.1
+                      +max(0,double.parse(bidInputController.text)-40)*0.05).toString() + "EQO fee"
+                  ),
+                  Text(
+                    //Total (sum of above here)
+                    "Total"
                   )]
                 ),
               actions: [
@@ -531,7 +554,7 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
           "user_id": user_id_input,
           "show_id": show_id_input,
           "bid_value": bid_value,
-          "status": "pending"
+          "status": "0"
         };
 
         var url_bids = 'https://eqomusic.com/mobile/bid_submit.php';
@@ -563,7 +586,7 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
         Map<String, String> input_data_attend = {
           "user_id": user_id_input,
           "show_id": show_id_input,
-          "attend_button": "1"
+          "attend_approved": "1"
         };
 
         var url_my_shows = 'https://eqomusic.com/mobile/bid_handling.php';
@@ -590,6 +613,8 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
       }
 
     //function invoked when venue declines a fan's bid; happens upon decision
+    //note: the php function keeps the record in the db w a payment status = -1
+    //this keeps the data in the db for future use, but ensures the record is no longer shown
     void AttendDeclined(user_id_input, show_id_input) async {
 
       Map<String, String> input_data_attend = {
@@ -806,18 +831,18 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
           .getHttpsCallable(functionName: 'createPaymentIntent');
 
       //opens payment request form
-      startPaymentProcess(bid) {
+      startPaymentProcess(show_id, bid) {
         StripePayment.paymentRequestWithCardForm(CardFormPaymentRequest())
             .then((paymentMethod) {
           double amount=bid*100.0; // multiplying by 100 to change $ to cents
           INTENT.call(<String, dynamic>{'amount': amount,'currency':'usd'}).then((response) {
-            confirmDialog(response.data["client_secret"],paymentMethod, bid); //function for confirmation for payment
+            confirmDialog(response.data["client_secret"],paymentMethod, show_id, bid); //function for confirmation for payment
           });
         });
       }
 
       //confirm payment view
-      confirmDialog(String clientSecret,PaymentMethod paymentMethod, double bid) {
+      confirmDialog(String clientSecret,PaymentMethod paymentMethod, String show_id, double bid) {
         var confirm = AlertDialog(
           title: Text("Confirm Payment"),
           content: Container(
@@ -846,7 +871,7 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
               child: new Text('Confirm'),
               onPressed: () {
                 Navigator.of(context).pop();
-                confirmPayment(clientSecret, paymentMethod, bid); // function to confirm Payment
+                confirmPayment(clientSecret, paymentMethod, show_id, bid); // function to confirm Payment
               },
             ),
           ],
@@ -860,22 +885,23 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
       }
 
       //function to confirm payment
-      confirmPayment(String sec, PaymentMethod paymentMethod, double bid) {
+      confirmPayment(String sec, PaymentMethod paymentMethod, String show_id, double bid) {
         StripePayment.confirmPaymentIntent(
           PaymentIntent(clientSecret: sec, paymentMethodId: paymentMethod.id),
         ).then((val) {
-          updatePaymentStatus(bid); //confirm payment status function
+          updatePaymentStatus(show_id, bid); //confirm payment status function
           final snackBar = SnackBar(content: Text('Payment Successful'),);
           Scaffold.of(context).showSnackBar(snackBar);
         });
       }
 
       //function to update payment status, send email
-      void updatePaymentStatus(bid) async {
+      void updatePaymentStatus(show_id, bid) async {
 
         Map<String, String> input_data_payment = {
-          "user_id": args.user_id,
-          "bid_amount": bid,
+          "user_id" : args.user_id,
+          "show_id" : show_id,
+          "bid_value": bid,
         };
 
         var url_payment_update = 'https://eqomusic.com/mobile/payment_status_update.php';
@@ -1324,7 +1350,7 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
                                                     //make sure to send an email receipt and that the future build is redone so that the icon becomes green
 
                                                     //note: this asks for card input, confirms amount, then submits payment
-                                                    startPaymentProcess(snapshot.data[int].bid_amount.todouble());
+                                                    startPaymentProcess(snapshot.data[int].show_id, snapshot.data[int].bid_amount.todouble());
 
                                                   }
 

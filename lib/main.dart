@@ -366,7 +366,7 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
 
         //get data from database
 
-        var url_my_shows = 'https://eqomusic.com/mobile/my_show_display.php';
+        var url_my_shows = 'https://eqomusic.com/mobile/my_show_display_vbid.php';
 
         var data = await http.post(url_my_shows,
             headers: {
@@ -402,7 +402,10 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
                 i["ticket_color"],
                 i["ticket_icon"],
                 i["under_21_flag"],
-                i["bid_amount"],
+                i["bid_value"],
+                i["credit_card_fee"],
+                i["eqo_fee"],
+                i["total_order"],
                 i["payment_status"]);
             myShows.add(myShow);
 
@@ -495,6 +498,11 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
 
       TextEditingController bidInputController = TextEditingController();
 
+      double typed_bid       = 0;
+      double credit_card_fee = 0;
+      double eqo_fee         = 0;
+      double total_order     = 0;
+
       void OpenBidDialog(user_id_input, show_id_input) async{
 
         return showDialog(
@@ -507,36 +515,45 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
                 children: [
                   Text("You will only be charged if the venue accepts your bid"),
                   TextField(
-                    //user inputs bid here
+                    //user inputs bid here; on change, updates the variables to fill in the other data
                     onChanged: (value) { setState(() {
-                      bidInputController.text = bidInputController.text;
+                      typed_bid = double.parse(bidInputController.text.replaceAll(RegExp('\$'), ''));
+
+                      //card processing fee calculated here, ensure this matches php code
+                      //calculated based on Stripe's stated pricing
+                      var credit_card_fee = typed_bid*0.029+0.30;
+
+                      //EQO fee calculated here; ensure this matches php code
+                      //50% up to $5; 25% on $5-10, 12.5% on $10-20, 10% on $20-40, 5% beyond
+                      var eqo_fee         = min(typed_bid,5)*0.5 +
+                                            min(max(0,typed_bid-5),5)*0.25 +
+                                            min(max(0,typed_bid-10),10)*0.125 +
+                                            min(max(0,typed_bid-20),20)*0.1 +
+                                            max(0,typed_bid-40)*0.0;
+
+                      //sum of bid + cc fee + eqo fee
+                      var total_order      = typed_bid + credit_card_fee + eqo_fee;
+
                     }); },
                     controller: bidInputController,
-                    decoration: InputDecoration(hintText: "Bid for a ticket"),
+                    decoration: InputDecoration(hintText: "Type a number as your bid"),
                   ),
                   Text(
-                    //card processing fee calculated here, ensure this matches php code
-                    //calculated based on Stripe's stated pricing
-                      (double.parse(bidInputController.text)*0.029+0.30).toString() + "card processing fee"
+                    //card processing fee
+                      "\$" + credit_card_fee.toString() + "card processing fee"
                   ),
                   Text(
-                    //EQO fee calculated here; ensure this matches php code
-                    //50% up to $5; 25% on $5-10, 12.5% on $10-20, 10% on $20-40, 5% beyond
-
-                      (min(double.parse(bidInputController.text),5)*0.5
-                      +min(max(0,double.parse(bidInputController.text)-5),5)*0.25
-                      +min(max(0,double.parse(bidInputController.text)-10),10)*0.125
-                      +min(max(0,double.parse(bidInputController.text)-20),20)*0.1
-                      +max(0,double.parse(bidInputController.text)-40)*0.05).toString() + "EQO fee"
+                    //EQO fee
+                      "\$" + eqo_fee.toString() + "EQO fee"
                   ),
                   Text(
-                    //Total (sum of above here)
-                    "Total"
+                    //Total
+                      "\$" + total_order.toString() + "Total"
                   )]
                 ),
               actions: [
                 TextButton(
-                  onPressed: SubmitBid(user_id_input, show_id_input, bidInputController.value),
+                  onPressed: SubmitBid(user_id_input, show_id_input, bidInputController.text, credit_card_fee, eqo_fee, total_order),
                   child: const Text('Submit'),
                 ),
               ]
@@ -548,13 +565,15 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
 
       //functions for fan pressing attend button. Displays dialog for submitting bid
 
-      SubmitBid(user_id_input, show_id_input, bid_value) async {
+      SubmitBid(user_id_input, show_id_input, bid_value, credit_card_fee, eqo_fee, total_order) async {
 
         Map<String, String> input_bid_data = {
           "user_id": user_id_input,
           "show_id": show_id_input,
-          "bid_value": bid_value,
-          "status": "0"
+          "bid_value": bid_value.toString(),
+          "cc_fee"   : credit_card_fee.toString(),
+          "eqo_fee"  : eqo_fee.toString(),
+          "total_amt": total_order.toString(),
         };
 
         var url_bids = 'https://eqomusic.com/mobile/bid_submit.php';
@@ -589,9 +608,9 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
           "attend_approved": "1"
         };
 
-        var url_my_shows = 'https://eqomusic.com/mobile/bid_handling.php';
+        var url_approved = 'https://eqomusic.com/mobile/bid_handling.php';
 
-        var data = await http.post(url_my_shows,
+        var data = await http.post(url_approved,
             headers: {
               'Accept': 'application/json',
               'Content-Type': 'application/x-www-form-urlencoded'
@@ -623,9 +642,9 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
         "decline_button": "1"
       };
 
-      var url_my_shows = 'https://eqomusic.com/mobile/bid_handling.php';
+      var url_declined = 'https://eqomusic.com/mobile/bid_handling.php';
 
-      var data = await http.post(url_my_shows,
+      var data = await http.post(url_declined,
           headers: {
             'Accept': 'application/json',
             'Content-Type': 'application/x-www-form-urlencoded'
@@ -813,9 +832,9 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
           "remove_button": "1"
         };
 
-        var url_my_shows = 'https://eqomusic.com/mobile/attendance_management.php';
+        var url_cancel = 'https://eqomusic.com/mobile/attendance_management_vbid.php';
 
-        var data = await http.post(url_my_shows,
+        var data = await http.post(url_cancel,
             headers: {
               'Accept': 'application/json',
               'Content-Type': 'application/x-www-form-urlencoded'
@@ -831,18 +850,18 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
           .getHttpsCallable(functionName: 'createPaymentIntent');
 
       //opens payment request form
-      startPaymentProcess(show_id, bid) {
+      startPaymentProcess(show_id, bid, credit_card_fee, eqo_fee, total_order) {
         StripePayment.paymentRequestWithCardForm(CardFormPaymentRequest())
             .then((paymentMethod) {
-          double amount=bid*100.0; // multiplying by 100 to change $ to cents
+          double amount=double.parse(total_order)*100.0; // multiplying by 100 to change $ to cents
           INTENT.call(<String, dynamic>{'amount': amount,'currency':'usd'}).then((response) {
-            confirmDialog(response.data["client_secret"],paymentMethod, show_id, bid); //function for confirmation for payment
+            confirmDialog(response.data["client_secret"],paymentMethod, show_id, bid, credit_card_fee, eqo_fee, amount); //function for confirmation for payment
           });
         });
       }
 
       //confirm payment view
-      confirmDialog(String clientSecret,PaymentMethod paymentMethod, String show_id, double bid) {
+      confirmDialog(String clientSecret,PaymentMethod paymentMethod, String show_id, bid, credit_card_fee, eqo_fee, double total_order) {
         var confirm = AlertDialog(
           title: Text("Confirm Payment"),
           content: Container(
@@ -850,11 +869,11 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
               crossAxisAlignment: CrossAxisAlignment.center,
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
-                Text(
-                  "Make Payment",
-                  // style: TextStyle(fontSize: 25),
-                ),
-                Text("Charge amount:\$100")
+                Text("Make Payment", style: TextStyle(fontSize: 25)),
+                Text(bid.toString() + "bid amount"),
+                Text(credit_card_fee.toString() + "credit card fee"),
+                Text(eqo_fee.toString() + "EQO fee"),
+                Text(total_order.toString() + "Total order", style: const TextStyle(fontWeight: FontWeight.bold))
               ],
             ),
           ),
@@ -871,7 +890,7 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
               child: new Text('Confirm'),
               onPressed: () {
                 Navigator.of(context).pop();
-                confirmPayment(clientSecret, paymentMethod, show_id, bid); // function to confirm Payment
+                confirmPayment(clientSecret, paymentMethod, show_id, bid, credit_card_fee, eqo_fee, total_order); // function to confirm Payment
               },
             ),
           ],
@@ -885,23 +904,27 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
       }
 
       //function to confirm payment
-      confirmPayment(String sec, PaymentMethod paymentMethod, String show_id, double bid) {
+      confirmPayment(String sec, PaymentMethod paymentMethod, String show_id, bid, credit_card_fee, eqo_fee, total_order) {
         StripePayment.confirmPaymentIntent(
           PaymentIntent(clientSecret: sec, paymentMethodId: paymentMethod.id),
         ).then((val) {
-          updatePaymentStatus(show_id, bid); //confirm payment status function
+          updatePaymentStatus(show_id, bid, credit_card_fee, eqo_fee, total_order); //confirm payment status function
           final snackBar = SnackBar(content: Text('Payment Successful'),);
           Scaffold.of(context).showSnackBar(snackBar);
         });
       }
 
       //function to update payment status, send email
-      void updatePaymentStatus(show_id, bid) async {
+      void updatePaymentStatus(show_id, double bid, double credit_card_fee, double eqo_fee, double total_order) async {
 
         Map<String, String> input_data_payment = {
           "user_id" : args.user_id,
           "show_id" : show_id,
-          "bid_value": bid,
+          "bid_value": bid.toString(),
+          "cc_fee"  : credit_card_fee.toString(),
+          "eqo_fee" : eqo_fee.toString(),
+          "total_order" : total_order.toString(),
+
         };
 
         var url_payment_update = 'https://eqomusic.com/mobile/payment_status_update.php';
@@ -1346,11 +1369,10 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
                                                   if(args.user_type == "fan" && snapshot.data[int].payment_status == "1"){
 
                                                     //launch payment dialog info. Pre-load bid amounts so it can feed into Stripe directly
-                                                    //show fee breakdown: $x for bid, stripe fee, EQO fee (max? %? TBD)
-                                                    //make sure to send an email receipt and that the future build is redone so that the icon becomes green
-
                                                     //note: this asks for card input, confirms amount, then submits payment
-                                                    startPaymentProcess(snapshot.data[int].show_id, snapshot.data[int].bid_amount.todouble());
+
+                                                    startPaymentProcess(snapshot.data[int].show_id, snapshot.data[int].bid, snapshot.data[int].credit_card_fee,
+                                                        snapshot.data[int].eqo_fee, snapshot.data[int].total_order.todouble());
 
                                                   }
 
@@ -1506,12 +1528,16 @@ class MyShow {
   final String ticket_color;
   final String ticket_icon;
   final String under_21_flag; //for whatever reason, having this as int throws error; check later, handling as string for now
-  final String bid_amount;
+  final String bid_value;
+  final String credit_card_fee;
+  final String eqo_fee;
+  final String total_order;
   final String payment_status;
 
   MyShow(this.show_id, this.venue, this.genre, this.time, this.year,
       this.month, this.month_no, this.day, this.artist_1, this.artist_2, this.artist_3,
-      this.max_attend, this.venue_address, this.venue_zip_code, this.ticket_color, this.ticket_icon, this.under_21_flag, this.bid_amount, this.payment_status);
+      this.max_attend, this.venue_address, this.venue_zip_code, this.ticket_color, this.ticket_icon, this.under_21_flag,
+      this.bid_value, this.credit_card_fee, this.eqo_fee, this.total_order, this.payment_status);
 
 }
 

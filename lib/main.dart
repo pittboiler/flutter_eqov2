@@ -7,7 +7,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_eqo_v2/event_handling.dart';
 import 'package:flutter_eqo_v2/login.dart';
-import 'package:flutter_eqo_v2/payment_screen.dart';
 import 'package:flutter_eqo_v2/scan_QR.dart';
 import 'package:flutter_eqo_v2/venue_settings.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -30,6 +29,7 @@ void main() {
 class MyApp extends StatelessWidget {
   static const routeName = '/MainScreenRoute';
   // This widget is the root of your application.
+
   @override
   Widget build(BuildContext context) {
 
@@ -46,9 +46,9 @@ class MyApp extends StatelessWidget {
       routes: {
         EventHandling.routeName: (context) => EventHandling(),
         VenueSettings.routeName: (context) => VenueSettings(),
-        Payment.routeName: (context) => Payment(),
         ScanQR.routeName: (context) => ScanQR(),
       },
+      initialRoute: "/",
     );
   }
 }
@@ -64,7 +64,6 @@ class MyHomePage extends StatefulWidget {
   _MyHomePageState createState() => _MyHomePageState(args);
 
 }
-
 
 class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMixin{
 
@@ -87,6 +86,7 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
   AudioPlayer audioPlayer = new AudioPlayer();
   String SoundFilePath;
   int play_pause_flag = 0;
+  int row_pp_button = -1;
 
   //sets up google maps
 
@@ -113,53 +113,12 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
   Position currentPosition;
   String currentAddress;
 
-  LatLng center = LatLng(39.952583, -75.165222);
-
   final Geolocator geolocator = Geolocator()..forceAndroidLocationManager;
 
-  void backupLocation(city, state) async {
-
-    final location_lookup = city + "," + state;
-    List<Location> coordinates = await locationFromAddress(location_lookup);
-
-    String string_coordinates = coordinates[0].toString();
-    List<String> list_coordinates = string_coordinates.split(",");
-
-    String sLatitudeLine = list_coordinates[0];
-    String sLongitudeLine = list_coordinates[1];
-
-    List<String> sLatitude = sLatitudeLine.split(": ");
-    List<String> sLongitude = sLongitudeLine.split(": ");
-
-    double latitude = double.parse(sLatitude[1]);
-    double longitude = double.parse(sLongitude[1]);
-
-    center = LatLng(latitude, longitude);
-
-  }
-
-  _getCurrentLocation() async {
-    if(location_update_counter < 2) {
-      geolocator
-          .getCurrentPosition(desiredAccuracy: LocationAccuracy.best)
-          .then((Position position) {
-          currentPosition = position;
-          center = LatLng(currentPosition.latitude, currentPosition.longitude);
-          print(center);
-      }).catchError((e) {
-        print(e);
-        try {
-          backupLocation(args.user_city, args.user_state);
-        } on Exception catch (e) {
-          print(e);
-          center = LatLng(39.952583, -75.165222);
-        }
-      });
-      location_update_counter = location_update_counter + 1;
-      GoogleMapController controller = await _controller.future;
-      controller.moveCamera(CameraUpdate.newLatLng(center));
-    }
-  }
+  //counters for modals so that they are not repeated
+  int add_show_modal_counter  = 0;
+  int no_shows_modal_counter  = 0;
+  int find_show_modal_counter = 0;
 
   //visibility flags to add a show, show a ticket, and show the scanner button
 
@@ -190,8 +149,6 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
     Map<String, String> venue_id_lookup = {
       "user_id" : args.user_id,
     };
-
-    print("subscription check" + args.subscription_flag + "," + args.final_month_flag);
 
     //get data from database
 
@@ -261,11 +218,13 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
     async {
 
       Map<String, String> input_data = {
-        "latitude": center.latitude.toString(),
-        "longitude": center.longitude.toString(),
+        "latitude": args.center.latitude.toString(),
+        "longitude": args.center.longitude.toString(),
         "user_id": args.user_id,
         "user_type" : args.user_type
       };
+
+      print("check this data for location" + input_data.toString());
 
       //get data from database
 
@@ -286,8 +245,20 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
       List<LocalShow> localShows = [];
 
       //loop through output
+      int row_counter = 0;
+
       for (var i in jsonData) {
+
+        print(row_pp_button.toString() + " should match " + row_counter.toString());
+
+        if(row_pp_button == row_counter){
+          row_pp_button = 1;
+        }
+
+        print(row_pp_button);
+
         LocalShow localShow = LocalShow(
+
             i["show_id"],
             i["venue"],
             i["genre"],
@@ -303,7 +274,7 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
             i["under_21_flag"],
             i["attending_flag"],
             i["audio_link"],
-            0);
+            row_pp_button);
         localShows.add(localShow);
 
         //get latitude/longitude, create map marker
@@ -329,10 +300,13 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
             infoWindow: InfoWindow(title: i["venue"]),
           )
         );
+
+        row_counter = row_counter + 1;
+
       }
 
       //update map with markers once
-      if(map_update_counter<1) {
+      if(map_update_counter < 1 && localShows.isNotEmpty) {
         setState(() {
           localMarkers;
         });
@@ -343,15 +317,17 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
         return localShows;
       }
       else{
-        return showDialog(
-            context: context,
-            builder: (context){
-              return AlertDialog(title: Text("Uh oh! There aren't shows near you"));
-            }
-        );
+        if(no_shows_modal_counter == 0)
+          {
+            no_shows_modal_counter = no_shows_modal_counter+1;
+            return showDialog(
+                context: context,
+                builder: (context){
+                  return AlertDialog(title: Text("Uh oh! There aren't shows near you"));
+                }
+            );
+          }
       }
-
-
     }
 
     //get MyShow listview
@@ -437,7 +413,7 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
           }
 
           //update map with markers once or whenever a venue is added
-          if (my_show_map_update_counter < 1) {
+          if (my_show_map_update_counter < 1 && myShows.isNotEmpty) {
             setState(() {
               myShowMarkers;
             });
@@ -449,22 +425,28 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
         }
         else{
           if(args.user_type == "fan") {
-            return showDialog(
-                context: context,
-                builder: (context) {
-                  return AlertDialog(
-                      title: Text("Go find shows to attend!"));
-                }
-            );
+            if(find_show_modal_counter == 0){
+              find_show_modal_counter = find_show_modal_counter + 1;
+              return showDialog(
+                  context: context,
+                  builder: (context) {
+                    return AlertDialog(
+                        title: Text("Go find shows to attend!"));
+                  }
+              );
+            }
           }
           else{
-            return showDialog(
-                context: context,
-                builder: (context) {
-                  return AlertDialog(
-                      title: Text("Add a show!"));
-                }
-            );
+            if(add_show_modal_counter == 0){
+              add_show_modal_counter = add_show_modal_counter + 1;
+              return showDialog(
+                  context: context,
+                  builder: (context) {
+                    return AlertDialog(
+                        title: Text("Add a show!"));
+                  }
+              );
+            }
           }
         }
 
@@ -498,65 +480,78 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
 
       TextEditingController bidInputController = TextEditingController();
 
-      double typed_bid       = 0;
-      double credit_card_fee = 0;
-      double eqo_fee         = 0;
-      double total_order     = 0;
-
-      void OpenBidDialog(user_id_input, show_id_input) async{
+      Future OpenBidDialog(user_id_input, show_id_input, context) async{
 
         return showDialog(
             context: context,
             builder: (context){
+
+              //initializes variables for bid systems
+              double typed_bid       = 0;
+              double credit_card_fee = 0;
+              double eqo_fee         = 0;
+              double total_order     = 0;
+
               return AlertDialog(
                 title: Text('Show Ticket Bid'),
-                content:
-                Column(
-                children: [
-                  Text("You will only be charged if the venue accepts your bid"),
-                  TextField(
-                    //user inputs bid here; on change, updates the variables to fill in the other data
-                    onChanged: (value) { setState(() {
-                      typed_bid = double.parse(bidInputController.text.replaceAll(RegExp('\$'), ''));
+                content: StatefulBuilder(
+                  builder: (BuildContext context, StateSetter setState){
+                    return Column(
+                        children: [
+                          Text("You will only be charged if the venue accepts your bid"),
+                          TextField(
+                            keyboardType: TextInputType.number,
+                            //user inputs bid here; on change, updates the variables to fill in the other data
+                            onChanged: (value) { setState(() {
 
-                      //card processing fee calculated here, ensure this matches php code
-                      //calculated based on Stripe's stated pricing
-                      var credit_card_fee = typed_bid*0.029+0.30;
+                              typed_bid = double.parse(bidInputController.text.replaceAll(RegExp('\$'), ''));
 
-                      //EQO fee calculated here; ensure this matches php code
-                      //50% up to $5; 25% on $5-10, 12.5% on $10-20, 10% on $20-40, 5% beyond
-                      var eqo_fee         = min(typed_bid,5)*0.5 +
-                                            min(max(0,typed_bid-5),5)*0.25 +
-                                            min(max(0,typed_bid-10),10)*0.125 +
-                                            min(max(0,typed_bid-20),20)*0.1 +
-                                            max(0,typed_bid-40)*0.0;
+                              //card processing fee calculated here
+                              //calculated based on Stripe's stated pricing
+                              credit_card_fee = typed_bid*0.029+0.30;
 
-                      //sum of bid + cc fee + eqo fee
-                      var total_order      = typed_bid + credit_card_fee + eqo_fee;
+                              print("this is the cc fee: " + credit_card_fee.toString());
 
-                    }); },
-                    controller: bidInputController,
-                    decoration: InputDecoration(hintText: "Type a number as your bid"),
-                  ),
-                  Text(
-                    //card processing fee
-                      "\$" + credit_card_fee.toString() + "card processing fee"
-                  ),
-                  Text(
-                    //EQO fee
-                      "\$" + eqo_fee.toString() + "EQO fee"
-                  ),
-                  Text(
-                    //Total
-                      "\$" + total_order.toString() + "Total"
-                  )]
+                              //EQO fee calculated here
+                              //50% up to $5; 25% on $5-10, 12.5% on $10-20, 10% on $20-40, 5% beyond
+                              eqo_fee         = min(typed_bid,5)*0.5 +
+                                  min(max(0,typed_bid-5),5)*0.25 +
+                                  min(max(0,typed_bid-10),10)*0.125 +
+                                  min(max(0,typed_bid-20),20)*0.1 +
+                                  max(0,typed_bid-40)*0.0;
+
+                              print("this is the EQO fee: " + eqo_fee.toString());
+
+                              //sum of bid + cc fee + eqo fee
+                              total_order      = typed_bid + credit_card_fee + eqo_fee;
+
+                              print("this is the total order: " + total_order.toString());
+
+                            }); },
+                            controller: bidInputController,
+                            decoration: InputDecoration(hintText: "Type a number as your bid"),
+                          ),
+                          Text(
+                            //card processing fee
+                              "\$" + credit_card_fee.toStringAsFixed(2) + " card processing fee"
+                          ),
+                          Text(
+                            //EQO fee
+                              "\$" + eqo_fee.toStringAsFixed(2) + " EQO fee"
+                          ),
+                          Text(
+                            //Total
+                              "\$" + total_order.toStringAsFixed(2) + " Total"
+                          )]
+                    );
+                  }
                 ),
-              actions: [
-                TextButton(
-                  onPressed: SubmitBid(user_id_input, show_id_input, bidInputController.text, credit_card_fee, eqo_fee, total_order),
-                  child: const Text('Submit'),
-                ),
-              ]
+                  actions: [
+                    TextButton(
+                      onPressed: () => SubmitBid(user_id_input, show_id_input, typed_bid, credit_card_fee, eqo_fee, total_order),
+                      child: const Text('Submit'),
+                    ),
+                  ]
               );
             }
         );
@@ -565,7 +560,7 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
 
       //functions for fan pressing attend button. Displays dialog for submitting bid
 
-      SubmitBid(user_id_input, show_id_input, bid_value, credit_card_fee, eqo_fee, total_order) async {
+      Future SubmitBid(user_id_input, show_id_input, bid_value, credit_card_fee, eqo_fee, total_order) async {
 
         Map<String, String> input_bid_data = {
           "user_id": user_id_input,
@@ -587,7 +582,6 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
         );
 
         if(data.body.contains('Error') == true){
-          print(data.body);
           return showDialog(
               context: context,
               builder: (context){
@@ -597,15 +591,24 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
 
         }
 
+        else{
+          return showDialog(
+              context: context,
+              builder: (context){
+                return AlertDialog(title: Text("Bid submitted!"));
+              }
+          );
+        }
+
       }
 
       //venue accepts bid for ticket, updates payment status for person that payment is needed
-      void AttendApproved(user_id_input, show_id_input) async {
+      Future AttendApproved(user_id_input, show_id_input) async {
 
         Map<String, String> input_data_attend = {
           "user_id": user_id_input,
           "show_id": show_id_input,
-          "attend_approved": "1"
+          "attend_button": "1"
         };
 
         var url_approved = 'https://eqomusic.com/mobile/bid_handling.php';
@@ -617,6 +620,10 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
             },
             body: input_data_attend
         );
+
+        print(input_data_attend.toString());
+
+        print(data.body);
 
         if(data.body.contains('Error') == true){
           print(data.body);
@@ -634,7 +641,9 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
     //function invoked when venue declines a fan's bid; happens upon decision
     //note: the php function keeps the record in the db w a payment status = -1
     //this keeps the data in the db for future use, but ensures the record is no longer shown
-    void AttendDeclined(user_id_input, show_id_input) async {
+    Future AttendDeclined(user_id_input, show_id_input) async {
+
+      print("is this being called?");
 
       Map<String, String> input_data_attend = {
         "user_id": user_id_input,
@@ -652,6 +661,9 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
           body: input_data_attend
       );
 
+      print(input_data_attend);
+      print(data.body);
+
       if(data.body.contains('Error') == true){
         print(data.body);
         return showDialog(
@@ -667,89 +679,107 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
 
       //function for showing dialog with ticket bids on venue selection
 
-      void OpenBidListDialog(user_id, user_type, user_city, user_state, show_id, artist_1, artist_2, artist_3, year, month_no, day, time, max_attend, genre) async{
+      Future OpenBidListDialog(BuildContext context, user_id, user_type, user_city, user_state, show_id, artist_1, artist_2, artist_3, year, month_no, day, time, max_attend, genre) async{
+
+        print("this was called for show ID " + show_id);
 
         return showDialog(
             context: context,
-            builder: (context){
+            useRootNavigator: false,
+            builder: (BuildContext context){
               return AlertDialog(
                   title: Text('Review Ticket Bid'),
-                  content:
-                  Container(
-                      width: double.maxFinite,
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text("Review and accept/decline ticket bids for this show"),
-                          Expanded(
-                            child: FutureBuilder(
-                                future: showTicketBids(show_id),
-                                builder: (BuildContext context, AsyncSnapshot snapshot){
+                  content: StatefulBuilder(builder: (BuildContext context, StateSetter setState) {
+                    return Container(
+                        width: double.maxFinite,
+                        child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                  "Review and accept/decline ticket bids for this show"),
+                              Expanded(
+                                  child: FutureBuilder(
+                                      future: showTicketBids(show_id),
+                                      builder: (BuildContext context,
+                                          AsyncSnapshot snapshot) {
+                                        if (snapshot.data == null) {
+                                          return Container(
+                                              child: Center(
+                                                  child: new CircularProgressIndicator()
+                                              )
+                                          );
+                                        }
 
-                                  if(snapshot.data == null) {
-                                    return Container(
-                                        child: Center(
-                                            child: new CircularProgressIndicator()
-                                        )
-                                    );
-                                  }
+                                        return ListView.builder(
+                                            itemCount: snapshot.data.length,
+                                            itemBuilder: (context, int) {
+                                              return ListTile(
 
-                                  return ListView.builder(
-                                      itemCount: snapshot.data.length,
-                                      itemBuilder: (context, int){
-                                        return ListTile(
+                                                  key: UniqueKey(),
 
-                                            key: UniqueKey(),
+                                                  title: FlatButton(
+                                                      child:
+                                                      Row(children: [
+                                                        Text(snapshot.data[int]
+                                                            .bid_value),
+                                                        Text(snapshot.data[int]
+                                                            .first_name),
+                                                        Text(snapshot.data[int]
+                                                            .last_name)
+                                                      ])),
+                                                  trailing:
+                                                  SizedBox(
+                                                      width: 100,
+                                                      //accept / decline buttons. Will remove row
+                                                      child: Row(children: [
+                                                        //accept
+                                                        GestureDetector(
+                                                            child: Icon(Icons
+                                                                .check_circle_outline,
+                                                                color: Colors
+                                                                    .green[900]),
 
-                                            title: FlatButton(
-                                                child:
-                                                Row(children: [snapshot.data[int].bid,
-                                                    snapshot.data[int].user_f_name,
-                                                    snapshot.data[int].user_l_name])),
-                                            trailing:
-                                                //accept / decline buttons. Will remove row
-                                                Row(children: [
-                                                  //accept
-                                                  GestureDetector(
-                                                      child: Icon(Icons.check_circle_outline, color: Colors.green[900]),
+                                                            onTap: () {
+                                                              //accept bid approval
+                                                              AttendApproved(
+                                                                  snapshot
+                                                                      .data[int]
+                                                                      .user_id,
+                                                                  show_id);
 
-                                                      onTap: (){
+                                                              //remove list tile
+                                                              Future.delayed(const Duration(milliseconds: 100), () {
+                                                                setState(() {
+                                                                });
+                                                              });
+                                                            }
+                                                        ),
 
-                                                        //accept bid approval
-                                                        AttendApproved(snapshot.data[int].user_id, show_id);
+                                                        Text("    "),
+                                                        //decline
+                                                        GestureDetector(
+                                                            child: Icon(Icons.cancel_outlined, color: Colors.red[900]),
 
-                                                        //remove list tile
-                                                        snapshot.data.removeAt(int);
-                                                        setState(() {
-                                                          snapshot = snapshot.data;
-                                                        });
+                                                            onTap: () {
+                                                              //decline bid php code
+                                                              AttendDeclined(snapshot.data[int].user_id, show_id);
 
-                                                      }
-                                                  ),
-                                                  //decline
-                                                  GestureDetector(
-                                                      child: Icon(Icons.cancel_outlined, color: Colors.red[900]),
-
-                                                      onTap: (){
-
-                                                        //decline bid php code
-                                                        AttendDeclined(snapshot.data[int].user_id, show_id);
-
-                                                        //remove list tile
-                                                        snapshot.data.removeAt(int);
-                                                        setState(() {
-                                                          snapshot = snapshot.data;
-                                                        });
-
-                                                      }
-                                                  ),
-                                                ]
-                                            ));
-                                      }
-                                  );
-                            })
-                      )]
-                  )),
+                                                              //remove list tile
+                                                              Future.delayed(const Duration(milliseconds: 100), () {
+                                                                setState(() {
+                                                                });
+                                                              });
+                                                            }
+                                                        ),
+                                                      ]
+                                                      )));
+                                            }
+                                        );
+                                      })
+                              )
+                            ]
+                        ));
+                  }),
                   actions: [
                     TextButton(
                       onPressed: //navigate to edit page
@@ -758,7 +788,7 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
                         context,
                         EventHandling.routeName,
                         arguments: EventInputs(user_id, user_type, user_city, user_state, true, show_id, artist_1, artist_2,
-                        artist_3, year, month_no, day, time, max_attend, genre));
+                        artist_3, year, month_no, day, time, max_attend, genre, args.center));
                         },
                       child: const Text('Edit/Cancel Show'),
                     )
@@ -793,6 +823,8 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
 
         var jsonData = json.decode(data.body);
 
+        print("we have bids!");
+
         List<ShowBid> showBids = [];
 
         //loop through output
@@ -800,9 +832,9 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
           ShowBid showBid = ShowBid(
               show_id_input,
               i["user_id"],
-              i["user_f_name"],
-              i["user_l_name"],
-              i["bid"]);
+              i["first_name"],
+              i["last_name"],
+              i["bid_value"]);
           showBids.add(showBid);
 
         }
@@ -853,15 +885,22 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
       startPaymentProcess(show_id, bid, credit_card_fee, eqo_fee, total_order) {
         StripePayment.paymentRequestWithCardForm(CardFormPaymentRequest())
             .then((paymentMethod) {
-          double amount=double.parse(total_order)*100.0; // multiplying by 100 to change $ to cents
+          double total_amount=double.parse(total_order)*100.0;
+          String amount = total_amount.toStringAsFixed(0); // multiplying by 100 to change $ to cents
+
+          //fix flow through for UI purposes only
+          eqo_fee         = double.parse(eqo_fee).toStringAsFixed(2);
+          credit_card_fee = double.parse(credit_card_fee).toStringAsFixed(2);
+          total_order     = double.parse(total_order).toStringAsFixed(2);
+
           INTENT.call(<String, dynamic>{'amount': amount,'currency':'usd'}).then((response) {
-            confirmDialog(response.data["client_secret"],paymentMethod, show_id, bid, credit_card_fee, eqo_fee, amount); //function for confirmation for payment
+            confirmDialog(response.data['client_secret'], paymentMethod, show_id, bid, credit_card_fee, eqo_fee, total_order); //function for confirmation for payment
           });
         });
       }
 
       //confirm payment view
-      confirmDialog(String clientSecret,PaymentMethod paymentMethod, String show_id, bid, credit_card_fee, eqo_fee, double total_order) {
+      confirmDialog(String clientSecret,PaymentMethod paymentMethod, String show_id, bid, credit_card_fee, eqo_fee, total_order) {
         var confirm = AlertDialog(
           title: Text("Confirm Payment"),
           content: Container(
@@ -870,26 +909,24 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
                 Text("Make Payment", style: TextStyle(fontSize: 25)),
-                Text(bid.toString() + "bid amount"),
-                Text(credit_card_fee.toString() + "credit card fee"),
-                Text(eqo_fee.toString() + "EQO fee"),
-                Text(total_order.toString() + "Total order", style: const TextStyle(fontWeight: FontWeight.bold))
+                Text(bid.toString() + " bid amount"),
+                Text(credit_card_fee.toString() + " credit card fee"),
+                Text(eqo_fee.toString() + " EQO fee"),
+                Text(total_order.toString() + " Total order", style: const TextStyle(fontWeight: FontWeight.bold))
               ],
             ),
           ),
           actions: <Widget>[
             new RaisedButton(
-              child: new Text('CANCEL'),
+              child: new Text('Cancel'),
               onPressed: () {
-                Navigator.of(context).pop();
-                final snackBar = SnackBar(content: Text('Payment Cancelled'),);
-                Scaffold.of(context).showSnackBar(snackBar);
+                Navigator.of(context, rootNavigator: true).pop('dialog');
               },
             ),
             new RaisedButton(
               child: new Text('Confirm'),
               onPressed: () {
-                Navigator.of(context).pop();
+                Navigator.of(context, rootNavigator: true).pop('dialog');
                 confirmPayment(clientSecret, paymentMethod, show_id, bid, credit_card_fee, eqo_fee, total_order); // function to confirm Payment
               },
             ),
@@ -915,15 +952,15 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
       }
 
       //function to update payment status, send email
-      void updatePaymentStatus(show_id, double bid, double credit_card_fee, double eqo_fee, double total_order) async {
+      void updatePaymentStatus(show_id, String bid, String credit_card_fee, String  eqo_fee, String total_order) async {
 
         Map<String, String> input_data_payment = {
           "user_id" : args.user_id,
           "show_id" : show_id,
-          "bid_value": bid.toString(),
-          "cc_fee"  : credit_card_fee.toString(),
-          "eqo_fee" : eqo_fee.toString(),
-          "total_order" : total_order.toString(),
+          "bid_value": bid,
+          "cc_fee"  : credit_card_fee,
+          "eqo_fee" : eqo_fee,
+          "total_order" : total_order,
 
         };
 
@@ -937,15 +974,25 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
             body: input_data_payment
         );
 
+        print("this is reading data:" + data.body);
+
         if(data.body.contains('Error') == true){
-          print(data.body);
           return showDialog(
               context: context,
               builder: (context){
                 return AlertDialog(title: Text("There was an issue generating the receipt"));
               }
           );
-
+        }
+        else{
+          setState(() {
+          });
+          return showDialog(
+              context: context,
+              builder: (context){
+                return AlertDialog(title: Text("You're going!"));
+              }
+          );
         }
 
       }
@@ -954,15 +1001,12 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
     //Start of the app UI build
     //******************************************************************************************************************
 
-
       @override
       Widget build(BuildContext context) {
 
         if(args.user_type == "venue"){
           fab_visibility = true;
         }
-
-        _getCurrentLocation();
 
         if(args.user_type == "venue" && venue_pull_counter<1) {
           VenueInfo();
@@ -994,8 +1038,7 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
                                   arguments: LoginOutput(
                                       args.user_id, args.user_type,
                                       args.user_city, args.user_state,
-                                      args.subscription_flag,
-                                      args.final_month_flag));
+                                      args.center));
                             }
                             else{
                               //go to settings for venue to adjust address/name/etc.
@@ -1005,8 +1048,7 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
                                   arguments: LoginOutput(
                                       args.user_id, args.user_type,
                                       args.user_city, args.user_state,
-                                      args.subscription_flag,
-                                      args.final_month_flag));
+                                      args.center));
                             }
                           },
                         )
@@ -1025,7 +1067,7 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
                                       onMapCreated: _onMapCreated,
                                       myLocationEnabled: true,
                                       initialCameraPosition: CameraPosition(
-                                        target: center,
+                                        target: args.center,
                                         zoom: 11.0,
                                       ),
                                     )
@@ -1121,8 +1163,10 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
                                           snapshot.data[int].audio_link == "" ?
                                           SizedBox.shrink()
                                           :
-                                          GestureDetector(child: Icon(Icons.play_circle_fill, color: snapshot.data[int].row_play_pause == 0 ? Colors.green: Colors.red),
+                                          GestureDetector(child: Icon(Icons.play_circle_fill, color: snapshot.data[int].row_play_pause == -1 ? Colors.green: Colors.red),
                                               onTap: (){
+
+                                                  print("play_pause_flag " + play_pause_flag.toString() + " row pp button " + snapshot.data[int].row_play_pause.toString());
 
                                                   //logic: if music is not being played, turn button red and play audio
                                                   //logic: if music is not being played, then see below:
@@ -1134,10 +1178,22 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
 
                                                       audioPlayer.play(snapshot.data[int].audio_link);
 
+                                                      print("this should play!");
+
                                                       setState(() {
-                                                      snapshot.data[int].row_play_pause = 1;
+                                                      row_pp_button = int;
                                                       play_pause_flag = 1;
                                                       });
+
+                                                      audioPlayer.onPlayerCompletion.listen((event) {
+
+                                                        setState(() {
+                                                          row_pp_button = -1;
+                                                          play_pause_flag = 0;
+                                                        });
+
+                                                      });
+
                                                   }
 
                                                   else{
@@ -1146,10 +1202,12 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
 
                                                       if(snapshot.data[int].row_play_pause == 1){
 
-                                                      audioPlayer.pause();
+                                                      audioPlayer.stop();
+
+                                                      print("this should stop!");
 
                                                       setState(() {
-                                                      snapshot.data[int].row_play_pause = 0;
+                                                      row_pp_button = -1;
                                                       play_pause_flag = 0;
                                                       });
 
@@ -1159,17 +1217,26 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
 
                                                           //case where music is being played from a different row (need to reset all buttons, pause audio stream, then play new music
 
-                                                          audioPlayer.pause();
+                                                          audioPlayer.stop();
                                                           audioPlayer.play(snapshot.data[int].audio_link);
 
                                                           setState(() {
 
                                                               for(var i = 0; i<=int; i++){
-                                                              snapshot.data[i].row_play_pause = 0;
+                                                              snapshot.data[i].row_play_pause = -1;
                                                           }
 
-                                                          snapshot.data[int].row_play_pause = 1;
+                                                          row_pp_button = int;
                                                           play_pause_flag = 1;
+
+                                                          });
+
+                                                          audioPlayer.onPlayerCompletion.listen((event) {
+
+                                                            setState(() {
+                                                              row_pp_button = -1;
+                                                              play_pause_flag = 0;
+                                                            });
 
                                                           });
 
@@ -1184,15 +1251,7 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
                                           Icon(Icons.check_circle_outline, color: Colors.green)
                                           : GestureDetector(child: Icon(Icons.control_point_rounded, color: Colors.orange),
 
-                                                onTap: (){
-                                                my_show_map_update_counter = 0;
-                                                String user_id_input = args.user_id;
-                                                String show_id_input = snapshot.data[int].show_id;
-                                                OpenBidDialog(user_id_input, show_id_input);
-                                                setState(() {
-                                                  Icon(Icons.check_circle_outline, color: Colors.green);
-                                                });
-                                                }
+                                                onTap: () => OpenBidDialog(args.user_id, snapshot.data[int].show_id, context),
                                           )
                                       ]
                                   )
@@ -1224,7 +1283,7 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
                                         onMapCreated: _onMyShowMapCreated,
                                         myLocationEnabled: true,
                                         initialCameraPosition: CameraPosition(
-                                          target: center,
+                                          target: args.center,
                                           zoom: 11.0,
                                         ),
                                       )
@@ -1353,11 +1412,11 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
                                                 //only allow click if yellow
                                                 child: args.user_type == "venue" ? Text ("Review Bids") :
 
-                                                    snapshot.data[int].payment_status == 0 ? Icon(Icons.event_outlined, color: Colors.grey[450]) :
+                                                    snapshot.data[int].payment_status == "0" ? Icon(Icons.event_outlined, color: Colors.grey[450]) :
 
-                                                        snapshot.data[int].payment_status == 1 ? Icon(Icons.event_outlined, color: Colors.yellow[800]) :
+                                                        snapshot.data[int].payment_status == "1" ? Icon(Icons.event_outlined, color: Colors.yellow[800]) :
 
-                                                            Icon(Icons.event_outlined, color: Colors.green[900]),
+                                                            Icon(Icons.event_outlined, color: Colors.green[700]),
 
                                                   //alternative for reviewing bids for venues
                                                 //Icon(Icons.attach_money_outlined, color: Colors.green[900]),
@@ -1371,15 +1430,15 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
                                                     //launch payment dialog info. Pre-load bid amounts so it can feed into Stripe directly
                                                     //note: this asks for card input, confirms amount, then submits payment
 
-                                                    startPaymentProcess(snapshot.data[int].show_id, snapshot.data[int].bid, snapshot.data[int].credit_card_fee,
-                                                        snapshot.data[int].eqo_fee, snapshot.data[int].total_order.todouble());
+                                                    startPaymentProcess(snapshot.data[int].show_id, snapshot.data[int].bid_value, snapshot.data[int].credit_card_fee,
+                                                        snapshot.data[int].eqo_fee, snapshot.data[int].total_order);
 
                                                   }
 
                                                   else if(args.user_type == "venue"){
                                                     //button for opening dialog w/ ticket info & edit/cancel button, has to pass info from row to navigator
 
-                                                    OpenBidListDialog(args.user_id, args.user_type, args.user_city, args.user_city, snapshot.data[int].show_id, snapshot.data[int].artist_1, snapshot.data[int].artist_2,
+                                                    OpenBidListDialog(context, args.user_id, args.user_type, args.user_city, args.user_city, snapshot.data[int].show_id, snapshot.data[int].artist_1, snapshot.data[int].artist_2,
                                                         snapshot.data[int].artist_3, snapshot.data[int].year, snapshot.data[int].month_no, snapshot.data[int].day, snapshot.data[int].time, snapshot.data[int].max_attend, snapshot.data[int].genre);
 
                                                   }
@@ -1388,7 +1447,7 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
 
                                                   var now = new DateTime.now();
 
-                                                  if((args.user_type == "venue") & (now.month == snapshot.data[int].month_no) & (now.day == snapshot.data[int].day) & ((now.hour-13) >= snapshot.data[int].time)){
+                                                  if((args.user_type == "venue") & (now.month == double.parse(snapshot.data[int].month_no)) & (now.day == double.parse(snapshot.data[int].day)) /*& ((now.hour-13) >= snapshot.data[int].time)*/){
 
                                                     switch(scanner_button_visibility){
                                                       case false: {scanner_button_visibility = true;}
@@ -1399,7 +1458,7 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
 
                                                   }
 
-                                                  if((args.user_type == "fan") & (now.month == snapshot.data[int].month_no) & (now.day == snapshot.data[int].day) & ((now.hour-13) >= snapshot.data[int].time)){
+                                                  if((args.user_type == "fan") & (now.month == double.parse(snapshot.data[int].month_no)) & (now.day == double.parse(snapshot.data[int].day)) /*& ((now.hour-13) >= snapshot.data[int].time)*/){
 
                                                     switch(ticket_visibility){
                                                       case false: {ticket_visibility = true;}
@@ -1419,11 +1478,14 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
 
                                               Visibility(
                                                 visible: ticket_visibility,
-                                                child: QrImage(
-                                                  data: args.user_id + "#" + snapshot.data[int].show_id + "#" + snapshot.data[int].ticket_color,
-                                                  version: QrVersions.auto,
-                                                  size: 200.0,
-                                                ),
+                                                child:
+                                                Center(
+                                                  child: QrImage(
+                                                    data: args.user_id + "#" + snapshot.data[int].show_id + "#",
+                                                    version: QrVersions.auto,
+                                                    size: 200.0,
+                                                  ),
+                                                )
                                               )
 
                                                   :
@@ -1464,7 +1526,7 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
                         Navigator.pushNamed(
                             context,
                             EventHandling.routeName,
-                            arguments: EventInputs(args.user_id, args.user_type, args.user_city, args.user_state, false, "", "", "", "", "", "", "", "", "", ""));
+                            arguments: EventInputs(args.user_id, args.user_type, args.user_city, args.user_state, false, "", "", "", "", "", "", "", "", "", "", args.center));
 
                       },
                       icon: Icon(Icons.event),
@@ -1502,7 +1564,7 @@ class LocalShow {
   final String under_21_flag; //for whatever reason, having this as int throws error; check later, handling as string for now
   final int attending_flag;
   final String audio_link;
-  final int row_play_pause;
+  int row_play_pause;
 
   LocalShow(this.show_id, this.venue, this.genre, this.time,
       this.month, this.day, this.artist_1, this.artist_2, this.artist_3,
@@ -1544,10 +1606,10 @@ class MyShow {
 class ShowBid {
   final String show_id;
   final String user_id;
-  final String user_f_name;
-  final String user_l_name;
-  final String ticket_bid;
+  final String first_name;
+  final String last_name;
+  final String bid_value;
 
-  ShowBid(this.show_id, this.user_id, this.user_f_name, this.user_l_name, this.ticket_bid);
+  ShowBid(this.show_id, this.user_id, this.first_name, this.last_name, this.bid_value);
 
 }

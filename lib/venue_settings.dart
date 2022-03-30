@@ -193,7 +193,7 @@ class _MyEventFormState extends State<VenueSettingsPage> {
       Navigator.pushNamed(
           context,
           MyApp.routeName,
-          arguments: LoginOutput(args.user_id, args.user_type, args.user_city, args.user_state, "1", "0"));
+          arguments: LoginOutput(args.user_id, args.user_type, args.user_city, args.user_state, args.center));
 
     }
 

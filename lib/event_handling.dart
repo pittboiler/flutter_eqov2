@@ -6,6 +6,7 @@ import 'package:flutter_eqo_v2/login.dart';
 import 'package:flutter_eqo_v2/main.dart';
 import 'package:flutter_eqo_v2/register.dart';
 import 'package:flutter_ffmpeg/flutter_ffmpeg.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:core';
@@ -35,6 +36,9 @@ class EventHandling extends StatelessWidget {
         visualDensity: VisualDensity.adaptivePlatformDensity,
       ),
       home: EventHandlingPage(event_args: event_args),
+      routes: {
+        MyApp.routeName: (context) => MyApp(),
+      },
     );
   }
 }
@@ -87,8 +91,6 @@ class _MyEventFormState extends State<EventHandlingPage> {
     super.dispose();
   }
 
-  //FUNCTIONS HAVE NOT YET BEEN TESTED
-
   //function for handling audio medley creation; called in the create event, update event functions
 
   Future<List<String>> MedleyCreation(artist_1, artist_2, artist_3, show_id)
@@ -99,14 +101,14 @@ class _MyEventFormState extends State<EventHandlingPage> {
         "artist_1" : artist_1,
         "artist_2" : artist_2,
         "artist_3": artist_3,
-        "show_id" : show_id,
+        "show_id" : show_id.toString(),
       };
 
       //get data from database
 
-      var url_login = 'https://eqomusic.com/mobile/medley_inputs.php';
+      var url_medley = 'https://eqomusic.com/mobile/medley_inputs.php';
 
-      var data = await http.post(url_login,
+      var data = await http.post(url_medley,
           headers: {
             'Accept': 'application/json',
             'Content-Type': 'application/x-www-form-urlencoded'
@@ -114,17 +116,34 @@ class _MyEventFormState extends State<EventHandlingPage> {
           body: input_get_urls
       );
 
+      print("testing medley inputs" + input_get_urls.toString());
+      print("testing medley inputs 2x" + data.body.toString());
+
       var jsonData = json.decode(data.body);
 
-      if(jsonData.contains('Error') != true){
+      print(jsonData);
+
+      if(jsonData.toString().contains('Error') != true){
 
         //for each url: check for non-empty, if non-empty -> extract 20 second sample -> merge all into one file, put file on firebase
 
-        String song_1_url = jsonData["song_1_url"];
-        String song_2_url = jsonData["song_2_url"];
-        String song_3_url = jsonData["song_3_url"];
+        String song_1_url = "";
+        String song_2_url = "";
+        String song_3_url = "";
 
-        Directory appDocumentDir = await getApplicationDocumentsDirectory();
+        if(jsonData["song_1_url"] != null){
+          song_1_url = jsonData["song_1_url"];
+        }
+
+        if(jsonData["song_2_url"] != null){
+          song_2_url = jsonData["song_2_url"];
+        }
+
+        if(jsonData["song_3_url"] != null){
+          song_3_url = jsonData["song_3_url"];
+        }
+
+        Directory appDocumentDir = await getExternalStorageDirectory();
         String rawDocumentPath = appDocumentDir.path;
 
         //NOTE: ASSUMES ALL SONGS LAST AT LEAST 1 MINUTE; WILL NEED TO ADJUST EVENTUALLY
@@ -132,58 +151,85 @@ class _MyEventFormState extends State<EventHandlingPage> {
         String song_1_output = "";
         String song_2_output = "";
         String song_3_output = "";
+        int input_counter = 0;
 
         if(song_1_url.length > 0) {
-          var song_1_arguments = ["-i", song_1_url, "-ss", "40 to 60 -c copy", "song_1_output.mp3"];
-          _flutterFFmpeg.executeWithArguments(song_1_arguments).then((rc) => print("FFmpeg song 1 process exited with rc $rc"));
-          song_1_output = rawDocumentPath + "/song_1_output.mp3";
+          String song_1_command = "-ss 00:00:40 -t 20 -i " + song_1_url + " -y " + rawDocumentPath + "/song_1_output.wav";
+          await _flutterFFmpeg.execute(song_1_command).then((rc) => print("FFmpeg song 1 process exited with rc $rc"));
+          song_1_output = rawDocumentPath + "/song_1_output.wav";
+          print("checking song output: " + song_1_output);
+          input_counter = input_counter + 1;
         }
 
         if(song_2_url.length > 0) {
-          var song_2_arguments = ["-i", song_2_url, "-ss", "40 to 60 -c copy", "song_2_output.mp3"];
+          var song_2_arguments = ["-i", song_2_url, "-ss", "40 -to 20 -c -acodec copy", "song_2_output.wav"];
           _flutterFFmpeg.executeWithArguments(song_2_arguments).then((rc) => print("FFmpeg song 2 process exited with rc $rc"));
-          song_2_output = rawDocumentPath + "/song_2_output.mp3";
+          song_2_output = rawDocumentPath + show_id + "/song_2_output.mp3";
+          input_counter = input_counter + 1;
         }
 
         if(song_3_url.length > 0) {
-          var song_3_arguments = ["-i", song_3_url, "-ss", "40 to 60 -c copy", "song_3_output.mp3"];
+          var song_3_arguments = ["-i", song_3_url, "-ss", "40 -to 20 -c copy", "song_3_output.mp3"];
           _flutterFFmpeg.executeWithArguments(song_3_arguments).then((rc) => print("FFmpeg song 3 process exited with rc $rc"));
-          song_3_output = rawDocumentPath + "/song_3_output.mp3";
+          song_3_output = rawDocumentPath + show_id.toString() + "/song_3_output.mp3";
+          input_counter = input_counter + 1;
         }
 
-        //clean up concatenation line for ffmpeg submission
-        String files_for_concatenation = song_1_output + "|" + song_2_output + "|" + song_3_output;
-        files_for_concatenation = files_for_concatenation.replaceAll("||", "|");
-        if(files_for_concatenation.substring(0,1) == "|"){
-          files_for_concatenation = files_for_concatenation.substring(1);
+        //prepares command information for ffmpeg based on # inputs
+
+        String medley_command = "";
+
+        if(input_counter == 1){
+          medley_command = "-i " + song_1_output + " " + song_2_output + " " + song_3_output + " -y " + rawDocumentPath + "/medley_file_output.wav";
         }
-        if(files_for_concatenation.substring(files_for_concatenation.length - 1) == "|"){
-          files_for_concatenation = files_for_concatenation.substring(files_for_concatenation.length - 1);
+
+        if(input_counter == 2){
+          medley_command = "-i " + song_1_output + " " + song_2_output + " " + song_3_output +
+              " -filter_complex '[0:0][1:0]concat=n=2:v=0:a=1[out]' -map '[out]' -y " + rawDocumentPath + "/medley_file_output.wav";
         }
-        files_for_concatenation = "concat:" + files_for_concatenation;
+
+        if(input_counter == 3){
+          medley_command = "-i " + song_1_output + " " + song_2_output + " " + song_3_output +
+              " -filter_complex '[0:0][1:0][2:0]concat=n=3:v=0:a=1[out]' -map '[out]' -y " + rawDocumentPath + "/medley_file_output.wav";
+        }
 
         //concatenates, sends file to firebase, gets download url, sends to SQL database for use in main tab
-        var file_concatenation_arguments = ["-i", files_for_concatenation, "acodec copy", "medley_file_output.mp3"];
-        _flutterFFmpeg.executeWithArguments(file_concatenation_arguments).then((rc) => print("FFmpeg medley process exited with rc $rc"));
-        String medley_file_output = rawDocumentPath + "/medley_file_output.mp3";
+        print("command for melody: " + medley_command);
+        await _flutterFFmpeg.execute(medley_command).then((rc) => print("FFmpeg Medley process exited with rc $rc"));
+        String medley_file_output = rawDocumentPath + "/medley_file_output.wav";
 
         File file = File(medley_file_output);
+        print("file string" + file.toString());
+
+        if(file == null){
+          print("yes it's actually null");
+        }
 
         String url = "";
 
-        StorageReference storageReference;
-        final StorageUploadTask uploadTask = storageReference.putFile(file);
-        final StorageTaskSnapshot downloadUrl = (await uploadTask.onComplete);
-        url = (await downloadUrl.ref.getDownloadURL());
+        FirebaseStorage _storage = FirebaseStorage.instance;
+
+        if(file != null) {
+
+          StorageReference ref = FirebaseStorage().ref().child("show_" + show_id.toString() + "_medley_file.wav");
+          StorageUploadTask uploadTask = ref.putFile(file);
+
+          var dowurl = await (await uploadTask.onComplete).ref.getDownloadURL();
+
+          url = dowurl.toString();
+
+        }
+
+        print("firebase URL" + url);
 
         Map<String, String> input_medley_download_url = {
-          "show_id": show_id,
+          "show_id": show_id.toString(),
           "medley_url": url,
         };
 
-        var url_login = 'https://eqomusic.com/mobile/medley_link_update.php';
+        var url_medley_link = 'https://eqomusic.com/mobile/medley_link_update.php';
 
-        var data = await http.post(url_login,
+        var data = await http.post(url_medley_link,
             headers: {
               'Accept': 'application/json',
               'Content-Type': 'application/x-www-form-urlencoded'
@@ -191,18 +237,26 @@ class _MyEventFormState extends State<EventHandlingPage> {
             body: input_medley_download_url
         );
 
+        var jsonData_medley = json.decode(data.body);
+
+        print(jsonData_medley);
+
       }
 
     }
 
   //function for creating event
 
-  Future<List<EventInputs>> CreateEvent(input_year, input_month, input_day, input_max_attend, input_genre, input_artist_1, input_artist_2, input_artist_3, input_time, input_over_21, input_user_id)
+  Future<List<EventInputs>> CreateEvent(input_month, input_day, input_year, input_max_attend, input_genre, input_artist_1, input_artist_2, input_artist_3, input_time, input_over_21, input_user_id)
 
   async {
 
     if(input_over_21 == false){
       under_21_flag = "1";
+    }
+
+    if(input_year.length == 2){
+      input_year = "20" + input_year;
     }
 
     Map<String, String> input_create_event = {
@@ -232,9 +286,11 @@ class _MyEventFormState extends State<EventHandlingPage> {
         body: input_create_event
     );
 
+    print("this is a check of the readout" + data.body);
+
     var jsonData = json.decode(data.body);
 
-    if(jsonData.contains('Error') == true){
+    if(jsonData.toString().contains('Error') || jsonData.toString().contains('<b>') == true){
 
       print("failed!");
       return showDialog(
@@ -249,12 +305,14 @@ class _MyEventFormState extends State<EventHandlingPage> {
 
       var show_id = jsonData["show_id"];
 
-      MedleyCreation(input_artist_1, input_artist_2, input_artist_3, show_id);
+      print("will this print?");
+
+      await MedleyCreation(input_artist_1, input_artist_2, input_artist_3, show_id);
 
       Navigator.pushNamed(
           context,
           MyApp.routeName,
-          arguments: LoginOutput(event_args.user_id, event_args.user_type, event_args.user_city, event_args.user_state, "1", "0"));
+          arguments: LoginOutput(event_args.user_id, event_args.user_type, event_args.user_city, event_args.user_state, event_args.center));
     }
 
   }
@@ -268,6 +326,7 @@ class _MyEventFormState extends State<EventHandlingPage> {
     //temporary hard-coded inputs
     Map<String, String> input_update_event = {
       "edit_event_button" : "yes",
+      "show_id" : event_args.show_id,
       "year" : input_year,
       "month": input_month,
       "day" : input_day,
@@ -281,17 +340,21 @@ class _MyEventFormState extends State<EventHandlingPage> {
       "user_id" : input_user_id,
     };
 
+    print(input_update_event.toString());
+
     //get data from database
 
-    var url_login = 'https://eqomusic.com/mobile/event_management.php';
+    var url_update = 'https://eqomusic.com/mobile/event_management.php';
 
-    var data = await http.post(url_login,
+    var data = await http.post(url_update,
         headers: {
           'Accept': 'application/json',
           'Content-Type': 'application/x-www-form-urlencoded'
         },
         body: input_update_event
     );
+
+    print(data.body.toString());
 
     var jsonData = json.decode(data.body);
 
@@ -308,12 +371,14 @@ class _MyEventFormState extends State<EventHandlingPage> {
     }
     else{
 
+      print("will this print?");
+
       MedleyCreation(input_artist_1, input_artist_2, input_artist_3, event_args.show_id);
 
       Navigator.pushNamed(
           context,
           MyApp.routeName,
-          arguments: LoginOutput(event_args.user_id, event_args.user_type, event_args.user_city, event_args.user_state, "1", "0"));
+          arguments: LoginOutput(event_args.user_id, event_args.user_type, event_args.user_city, event_args.user_state, event_args.center));
     }
 
   }
@@ -360,7 +425,7 @@ class _MyEventFormState extends State<EventHandlingPage> {
       Navigator.pushNamed(
           context,
           MyApp.routeName,
-          arguments: LoginOutput(event_args.user_id, event_args.user_type, event_args.user_city, event_args.user_state, "1", "0"));
+          arguments: LoginOutput(event_args.user_id, event_args.user_type, event_args.user_city, event_args.user_state, event_args.center));
     }
 
   }
@@ -549,7 +614,7 @@ class _MyEventFormState extends State<EventHandlingPage> {
       keyboardType: TextInputType.number,
       decoration: InputDecoration(
           contentPadding: EdgeInsets.fromLTRB(20.0, 15.0, 20.0, 15.0),
-          hintText: "Time (pm only)",
+          hintText: "Time (00:00pm)",
           border:
           OutlineInputBorder(borderRadius: BorderRadius.circular(32.0))),
     );
@@ -557,6 +622,7 @@ class _MyEventFormState extends State<EventHandlingPage> {
     final maxAttendanceField = TextField(
       style: style,
       controller: attendanceController,
+      keyboardType: TextInputType.number,
       decoration: InputDecoration(
           contentPadding: EdgeInsets.fromLTRB(20.0, 15.0, 20.0, 15.0),
           hintText: "Max EQO Attendance",
@@ -606,7 +672,7 @@ class _MyEventFormState extends State<EventHandlingPage> {
 
           List<String> date_inputs = dateController.text.split("/");
 
-          UpdateEvent(date_inputs[0], date_inputs[1], date_inputs[2], attendanceController.text, genreController.text, openerController.text, middleController.text, closerController.text, timeController.text, over_21_checkbox, event_args.user_id);
+          UpdateEvent(date_inputs[2], date_inputs[0], date_inputs[1], attendanceController.text, genreController.text, openerController.text, middleController.text, closerController.text, timeController.text, over_21_checkbox.toString(), event_args.user_id);
 
         },
         child: Text("Update Event",
@@ -627,6 +693,26 @@ class _MyEventFormState extends State<EventHandlingPage> {
           CancelEvent(event_args.show_id);
         },
         child: Text("Cancel Event",
+            textAlign: TextAlign.center,
+            style: style.copyWith(
+                color: Colors.white, fontWeight: FontWeight.bold)),
+      ),
+    );
+
+    final BackButon = Material(
+      elevation: 5.0,
+      borderRadius: BorderRadius.circular(30.0),
+      color: Color(0xff01A0C7),
+      child: MaterialButton(
+        minWidth: MediaQuery.of(context).size.width,
+        padding: EdgeInsets.fromLTRB(20.0, 15.0, 20.0, 15.0),
+        onPressed: () {
+          Navigator.pushNamed(
+              context,
+              MyApp.routeName,
+              arguments: LoginOutput(event_args.user_id, event_args.user_type, event_args.user_city, event_args.user_state, event_args.center));
+        },
+        child: Text("Go Back",
             textAlign: TextAlign.center,
             style: style.copyWith(
                 color: Colors.white, fontWeight: FontWeight.bold)),
@@ -665,6 +751,7 @@ class _MyEventFormState extends State<EventHandlingPage> {
                     Row(
                     children: [
                       Checkbox(
+                        //note: this inverts so that, in php, "under 21 flag" is 0 if event is 21+ only
                         value: over_21_checkbox,
                           onChanged: (value) {
                             setState(() {
@@ -703,6 +790,7 @@ class _MyEventFormState extends State<EventHandlingPage> {
                               SizedBox(
                                 height: 15.0,
                               ),
+                              BackButon,
                             ]
                         )
                     ),
@@ -732,8 +820,9 @@ class EventInputs {
   final String time_input;
   final String max_attendance;
   final String genre;
+  final LatLng center;
 
-  EventInputs(this.user_id, this.user_type, this.user_city, this.user_state, this.update_flag, this.show_id, this.open_artist, this.follow_artist, this.closer_artist, this.year_input, this.month_input, this.day_input, this.time_input, this.max_attendance, this.genre);
+  EventInputs(this.user_id, this.user_type, this.user_city, this.user_state, this.update_flag, this.show_id, this.open_artist, this.follow_artist, this.closer_artist, this.year_input, this.month_input, this.day_input, this.time_input, this.max_attendance, this.genre, this.center);
 
 }
 

@@ -5,6 +5,9 @@ import 'package:flutter_eqo_v2/login.dart';
 import 'package:flutter_eqo_v2/main.dart';
 import 'package:flutter_eqo_v2/register.dart';
 import 'package:flutter_eqo_v2/artist_main.dart';
+import 'package:geocoding/geocoding.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:core';
@@ -93,6 +96,32 @@ class _MyHomePageState extends State<MyRegisterPage> {
     });
   }
 
+  //gets user location data here to pass into main
+  Position currentPosition;
+  int location_update_counter = 0;
+  LatLng center = LatLng(0, 0);
+  double user_latitude = 0.00;
+  double user_longitude = 0.00;
+
+
+  final Geolocator geolocator = Geolocator()..forceAndroidLocationManager;
+
+  //gets user location data here to pass into main
+  _getCurrentLocation() async {
+    if(location_update_counter < 1) {
+      geolocator
+          .getCurrentPosition(desiredAccuracy: LocationAccuracy.best)
+          .then((Position position) {
+        currentPosition = position;
+        center = LatLng(currentPosition.latitude, currentPosition.longitude);
+        print("center from lat/long" + center.toString());
+      }).catchError((e) {
+        print(e);
+      });
+      location_update_counter = location_update_counter + 1;
+    }
+  }
+
   //core register functions
 
   //fan register: take inputs from login field, run by code validation, output login info or error message
@@ -140,7 +169,7 @@ class _MyHomePageState extends State<MyRegisterPage> {
       Navigator.pushNamed(
           context,
           MyApp.routeName,
-          arguments: LoginOutput(jsonData[0].toString(), jsonData[1].toString(), jsonData[2].toString(), jsonData[3].toString(), jsonData[4].toString(), jsonData[5].toString()));
+          arguments: LoginOutput(jsonData[0].toString(), jsonData[1].toString(), jsonData[2].toString(), jsonData[3].toString(), center));
     }
 
   }
@@ -149,6 +178,21 @@ class _MyHomePageState extends State<MyRegisterPage> {
   Future<List<LoginOutput>> RegisterVenue(input_email, input_password, input_vname, input_address, input_city, input_state, input_zip, input_vtype)
 
   async {
+
+    final address_lookup = input_address + ", " + input_city + ", " + input_state + " " + input_zip;
+    List<Location> coordinates = await locationFromAddress(address_lookup);
+
+    String string_coordinates = coordinates[0].toString();
+    List<String> list_coordinates = string_coordinates.split(",");
+
+    String sLatitudeLine = list_coordinates[0];
+    String sLongitudeLine = list_coordinates[1];
+
+    List<String> sLatitude = sLatitudeLine.split(": ");
+    List<String> sLongitude = sLongitudeLine.split(": ");
+
+    double latitude = double.parse(sLatitude[1]);
+    double longitude = double.parse(sLongitude[1]);
 
     //temporary hard-coded inputs
     Map<String, String> input_data_register_venue = {
@@ -161,6 +205,8 @@ class _MyHomePageState extends State<MyRegisterPage> {
       "city" : input_city,
       "state" : input_state,
       "venue_type" : input_vtype,
+      "latitude" : latitude.toString(),
+      "longitude" : longitude.toString(),
     };
 
     //get data from database
@@ -192,7 +238,7 @@ class _MyHomePageState extends State<MyRegisterPage> {
       Navigator.pushNamed(
           context,
           MyApp.routeName,
-          arguments: LoginOutput(jsonData[0].toString(), jsonData[1].toString(), jsonData[2].toString(), jsonData[3].toString(), jsonData[4].toString(), jsonData[5].toString()));
+          arguments: LoginOutput(jsonData[0].toString(), jsonData[1].toString(), jsonData[2].toString(), jsonData[3].toString(), center));
     }
 
   }
@@ -242,7 +288,7 @@ class _MyHomePageState extends State<MyRegisterPage> {
           Navigator.pushNamed(
               context,
               ArtistMain.routeName,
-              arguments: LoginOutput(jsonData[0].toString(), jsonData[1].toString(), jsonData[2].toString(), jsonData[3].toString(), jsonData[4].toString(), jsonData[5].toString()));
+              arguments: LoginOutput(jsonData[0].toString(), jsonData[1].toString(), jsonData[2].toString(), jsonData[3].toString(), center));
     }
 
   }
@@ -253,6 +299,8 @@ class _MyHomePageState extends State<MyRegisterPage> {
 
   @override
   Widget build(BuildContext context) {
+
+    _getCurrentLocation();
 
     final emailField = TextField(
       enabled: typeChosen,
@@ -328,6 +376,7 @@ class _MyHomePageState extends State<MyRegisterPage> {
     final zipField = TextField(
       enabled: venueChosen,
       style: style,
+      keyboardType: TextInputType.number,
       controller: zipController,
       decoration: InputDecoration(
           contentPadding: EdgeInsets.fromLTRB(20.0, 15.0, 20.0, 15.0),
@@ -374,6 +423,7 @@ class _MyHomePageState extends State<MyRegisterPage> {
     final fandobField = TextField(
       enabled: fanChosen,
       style: style,
+      keyboardType: TextInputType.number,
       controller: fandobController,
       decoration: InputDecoration(
           contentPadding: EdgeInsets.fromLTRB(20.0, 15.0, 20.0, 15.0),

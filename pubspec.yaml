@@ -40,7 +40,7 @@ dependencies:
   firebase_storage: ^3.1.6
   permission_handler: ^5.0.1+1
   audioplayers: 0.17.0
-  flutter_ffmpeg: ^0.3.1
+  flutter_ffmpeg: ^0.4.2  # 3 1
   path_provider: ^1.6.28
   stripe_payment: ^1.1.0
   cloud_functions: ^0.5.0

@@ -3,11 +3,13 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_eqo_v2/main.dart';
 import 'package:flutter_eqo_v2/register.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:core';
 import 'package:http/http.dart' as http;
 import 'package:async/async.dart';
+import 'package:geolocator/geolocator.dart';
 
 import 'artist_main.dart';
 
@@ -56,8 +58,34 @@ class _MyLoginState extends State<MyLoginPage> {
     super.dispose();
   }
 
+  //gets user location data here to pass into main
+  Position currentPosition;
+  int location_update_counter = 0;
+  LatLng center = LatLng(0, 0);
+  double user_latitude = 0.00;
+  double user_longitude = 0.00;
+
+
+  final Geolocator geolocator = Geolocator()..forceAndroidLocationManager;
+
+  //gets user location data here to pass into main
+  _getCurrentLocation() async {
+    if(location_update_counter < 1) {
+      geolocator
+          .getCurrentPosition(desiredAccuracy: LocationAccuracy.best)
+          .then((Position position) {
+        currentPosition = position;
+        center = LatLng(currentPosition.latitude, currentPosition.longitude);
+        print("center from lat/long" + center.toString());
+      }).catchError((e) {
+        print(e);
+      });
+      location_update_counter = location_update_counter + 1;
+    }
+  }
+
   //login check: take inputs from login field, run by code validation, output login info or error message
-  Future<List<LoginOutput>> LoginCheck(input_email, input_password)
+  Future<List<LoginOutput>> LoginCheck(input_email, input_password, user_latitude, user_longitude)
 
   async {
 
@@ -79,6 +107,8 @@ class _MyLoginState extends State<MyLoginPage> {
         body: input_data_login
     );
 
+    print(data.body.toString());
+
     var jsonData = json.decode(data.body);
 
     if(data.body.isNotEmpty) {
@@ -98,13 +128,13 @@ class _MyLoginState extends State<MyLoginPage> {
           Navigator.pushNamed(
               context,
               ArtistMain.routeName,
-              arguments: LoginOutput(jsonData[0].toString(), jsonData[1].toString(), jsonData[2].toString(), jsonData[3].toString(), jsonData[4].toString(), jsonData[5].toString()));
+              arguments: LoginOutput(jsonData[0].toString(), jsonData[1].toString(), jsonData[2].toString(), jsonData[3].toString(), center));
         }
         else {
           Navigator.pushNamed(
               context,
               MyApp.routeName,
-              arguments: LoginOutput(jsonData[0].toString(), jsonData[1].toString(), jsonData[2].toString(), jsonData[3].toString(), jsonData[4].toString(), jsonData[5].toString()));
+              arguments: LoginOutput(jsonData[0].toString(), jsonData[1].toString(), jsonData[2].toString(), jsonData[3].toString(), center));
         }
       }
 
@@ -127,12 +157,8 @@ class _MyLoginState extends State<MyLoginPage> {
 
   @override
   Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
+
+    _getCurrentLocation();
 
     final emailField = TextField(
       style: style,
@@ -163,7 +189,7 @@ class _MyLoginState extends State<MyLoginPage> {
         minWidth: MediaQuery.of(context).size.width,
         padding: EdgeInsets.fromLTRB(20.0, 15.0, 20.0, 15.0),
         onPressed: () {
-          LoginCheck(emailController.text, passwordController.text);
+          LoginCheck(emailController.text, passwordController.text, user_latitude, user_longitude);
         },
         child: Text("Login",
             textAlign: TextAlign.center,
@@ -244,9 +270,8 @@ class LoginOutput {
   final String user_type;
   final String user_city;
   final String user_state;
-  final String subscription_flag;
-  final String final_month_flag;
+  final LatLng center;
 
-  LoginOutput(this.user_id, this.user_type, this.user_city, this.user_state, this.subscription_flag, this.final_month_flag);
+  LoginOutput(this.user_id, this.user_type, this.user_city, this.user_state, this.center);
 
 }

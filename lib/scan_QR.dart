@@ -97,7 +97,7 @@ class _ScanQRState extends State<ScanQR> {
             FlatButton(
               padding: EdgeInsets.all(15),
               onPressed: () async {
-                String codeScanner = await BarcodeScanner.scan();    //barcode scnner
+                String codeScanner = await BarcodeScanner.scan();    //barcode scanner
                 TicketConfirmation(codeScanner);
               },
               child: Text("Open Scanner",style: TextStyle(color: Colors.indigo[900]),),

@@ -479,6 +479,7 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
       //functions for fan pressing attend button. Displays dialog for submitting bid
 
       TextEditingController bidInputController = TextEditingController();
+      TextEditingController quantityInputController = TextEditingController();
 
       Future OpenBidDialog(user_id_input, show_id_input, context) async{
 
@@ -1117,7 +1118,7 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
                                             child: Column(
                                                 children: [
                                                   GridView.count(
-                                                      crossAxisCount: 3,
+                                                      crossAxisCount: 2,
                                                       childAspectRatio: 2.5,
                                                       padding: const EdgeInsets.all(1.0),
                                                       mainAxisSpacing: 0,
@@ -1128,10 +1129,11 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
                                                         Align(alignment: Alignment.center, child: Text(snapshot.data[int].venue, textAlign: TextAlign.center)),
                                                         Align(alignment: Alignment.center, child: Text(snapshot.data[int].genre, textAlign: TextAlign.center)),
 
-                                                        snapshot.data[int].under_21_flag == "0"?
-                                                        Align(alignment: Alignment.center, child: Text("18+", textAlign: TextAlign.center))
-                                                            :
-                                                        Align(alignment: Alignment.center, child: Text("21+", textAlign: TextAlign.center)),
+                                                        //removed age limit - felt unnecessary, out of purview
+                                                        //snapshot.data[int].under_21_flag == "0"?
+                                                        //Align(alignment: Alignment.center, child: Text("18+", textAlign: TextAlign.center))
+                                                        //    :
+                                                        //Align(alignment: Alignment.center, child: Text("21+", textAlign: TextAlign.center)),
                                                       ]
                                                   ),
                                                   GridView.count(
@@ -1365,7 +1367,7 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
                                                             child: Column(
                                                                 children: [
                                                                   GridView.count(
-                                                                      crossAxisCount: 3,
+                                                                      crossAxisCount: 2,
                                                                       childAspectRatio: 2.5,
                                                                       padding: const EdgeInsets.all(1.0),
                                                                       mainAxisSpacing: 0,
@@ -1376,10 +1378,11 @@ class _MyHomePageState extends State<MyHomePage> with AutomaticKeepAliveClientMi
                                                                         Align(alignment: Alignment.center, child: Text(snapshot.data[int].venue, textAlign: TextAlign.center)),
                                                                         Align(alignment: Alignment.center, child: Text(snapshot.data[int].genre, textAlign: TextAlign.center)),
 
-                                                                        snapshot.data[int].under_21_flag == "0"?
-                                                                        Align(alignment: Alignment.center, child: Text("18+", textAlign: TextAlign.center))
-                                                                            :
-                                                                        Align(alignment: Alignment.center, child: Text("21+", textAlign: TextAlign.center)),
+                                                                        //removed age limit - felt unnecessary, out of purview
+                                                                        //snapshot.data[int].under_21_flag == "0"?
+                                                                        //Align(alignment: Alignment.center, child: Text("18+", textAlign: TextAlign.center))
+                                                                        //    :
+                                                                        //Align(alignment: Alignment.center, child: Text("21+", textAlign: TextAlign.center)),
                                                                       ]
                                                                   ),
                                                                   GridView.count(

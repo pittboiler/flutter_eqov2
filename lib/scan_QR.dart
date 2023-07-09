@@ -35,7 +35,7 @@ class _ScanQRState extends State<ScanQR> {
 
     //get data from database
 
-    var url_login = 'https://eqomusic.com/mobile/attendance_management.php';
+    var url_login = 'https://eqomusic.com/mobile/attendance_management_vbid.php';
 
     var data = await http.post(url_login,
         headers: {

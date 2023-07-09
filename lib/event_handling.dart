@@ -750,7 +750,8 @@ class _MyEventFormState extends State<EventHandlingPage> {
                     SizedBox(height: 25.0),
                     Row(
                     children: [
-                      Checkbox(
+                      //removed age limit - felt unnecessary, out of purview
+                      /*Checkbox(
                         //note: this inverts so that, in php, "under 21 flag" is 0 if event is 21+ only
                         value: over_21_checkbox,
                           onChanged: (value) {
@@ -759,7 +760,7 @@ class _MyEventFormState extends State<EventHandlingPage> {
                             });
                           },
                         ),
-                      Text('Is this 21 only?'),
+                      Text('Is this 21 only?'),*/
                       ],
                     ),
                     Visibility(
